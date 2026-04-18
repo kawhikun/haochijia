@@ -320,6 +320,7 @@ function syncManualBasisUi() {
   DOM.manualServingSize.closest('.field').style.display = showServing ? 'grid' : 'none';
   DOM.manualServings.closest('.field').style.display = showServing ? 'grid' : 'none';
   DOM.manualAmount.closest('.field').style.display = showServing ? 'none' : 'grid';
+  syncRealtimeNutritionV24();
 }
 
 
@@ -558,6 +559,66 @@ function currentSnapshot() {
 
 function currentTotals() {
   return currentSnapshot().totals;
+}
+
+function readPendingManualNutrientsV24() {
+  if (!state.v24ManualPreviewDirty) return null;
+  if (!DOM.manualFields || !DOM.manualBasis) return null;
+  const nutrients = {};
+  DOM.manualFields.querySelectorAll('[data-manual-field]').forEach((input) => {
+    const key = input.dataset.manualField;
+    const value = Number(input.value);
+    if (key && Number.isFinite(value) && value >= 0) nutrients[key] = value;
+  });
+  const keys = Object.keys(nutrients);
+  if (!keys.length) return null;
+  const basis = DOM.manualBasis.value;
+  const amount = clamp(Number(DOM.manualAmount?.value) || 0, 1, 5000);
+  const servings = clamp(Number(DOM.manualServings?.value) || 1, 0.1, 50);
+  const scaled = {};
+  if (basis === 'serving') {
+    for (const [key, value] of Object.entries(nutrients)) scaled[key] = value * servings;
+  } else {
+    const factor = amount / 100;
+    for (const [key, value] of Object.entries(nutrients)) scaled[key] = value * factor;
+  }
+  return { nutrients: scaled, knownIds: keys };
+}
+
+function realtimeNutritionSnapshotV24() {
+  const snapshot = currentSnapshot();
+  const pending = readPendingManualNutrientsV24();
+  if (!pending) return snapshot;
+  const totals = { ...snapshot.totals };
+  mergeTotals(totals, pending.nutrients || {});
+  return {
+    ...snapshot,
+    totals,
+    totalFoodCount: (snapshot.totalFoodCount || 0) + 1,
+    totalWeight: (snapshot.totalWeight || 0) + Math.max(60, Number(pending.nutrients?.kcal) || 0),
+    previewSource: 'manual',
+  };
+}
+
+function syncRealtimeNutritionV24() {
+  try { renderFoodRealtimeBoardV20(); } catch {}
+  try { decorateV22BodyStage(); } catch {}
+  try { refreshV22HomeMeta(); } catch {}
+}
+
+function bindRealtimeNutritionPreviewV24() {
+  if (document.body.dataset.v24RealtimeNutritionBound) return;
+  document.body.dataset.v24RealtimeNutritionBound = '1';
+  const markDirty = () => {
+    state.v24ManualPreviewDirty = true;
+    syncRealtimeNutritionV24();
+  };
+  DOM.manualFields?.addEventListener('input', markDirty);
+  DOM.manualFields?.addEventListener('change', markDirty);
+  [DOM.manualBasis, DOM.manualAmount, DOM.manualServings, DOM.manualServingSize, DOM.manualName].forEach((node) => {
+    node?.addEventListener('input', markDirty);
+    node?.addEventListener('change', markDirty);
+  });
 }
 
 function shouldShowCoverage(id, totalFoodCount = 0) {
@@ -924,9 +985,10 @@ function loadMusicPrefs() {
       variation: clamp(Number(raw.variation) || 3, 1, 5),
       autoMorph: raw.autoMorph !== false,
       persistent: raw.persistent !== false,
+      styleId: String(raw.styleId || ''),
     };
   } catch {
-    return { genreId: MUSIC_GENRES[0].id, volume: 72, energy: 4, intensity: 3, pulse: 3, bass: 4, brightness: 3, tempo: 3, variation: 3, autoMorph: true, persistent: true };
+    return { genreId: MUSIC_GENRES[0].id, volume: 72, energy: 4, intensity: 3, pulse: 3, bass: 4, brightness: 3, tempo: 3, variation: 3, autoMorph: true, persistent: true, styleId: '' };
   }
 }
 function saveMusicPrefs() {
@@ -944,6 +1006,7 @@ function saveMusicPrefs() {
       variation: snapshot.variation ?? state.musicPrefs.variation,
       autoMorph: snapshot.autoMorph ?? state.musicPrefs.autoMorph,
       persistent: snapshot.persistent ?? state.musicPrefs.persistent,
+      styleId: state.musicPrefs?.styleId || '',
     }));
   } catch {}
 }
@@ -1339,6 +1402,7 @@ function initMusicController() {
       variation: snapshot.variation,
       autoMorph: snapshot.autoMorph,
       persistent: snapshot.persistent,
+      styleId: state.musicPrefs?.styleId || '',
     };
     saveMusicPrefs();
     renderSoundPanel();
@@ -1811,6 +1875,77 @@ function renderSoundReadings(snapshot) {
 }
 
 
+const MUSIC_STYLE_PRESETS_V24 = [
+  { id: 'hypnotic', labels: { zh: '催眠循环', en: 'Hypnotic Loop', es: 'Bucle hipnótico' }, note: { zh: '更少旋律、更长呼吸，适合长时间盯着模型和数据。', en: 'Less melody, longer breathing loops for extended focus.', es: 'Menos melodía y respiración más larga para concentrarse.' }, genreId: 'minimalTechno', energy: 3, intensity: 2, pulse: 3, bass: 3, brightness: 2, tempo: 2, variation: 2 },
+  { id: 'warehouse', labels: { zh: '仓库重压', en: 'Warehouse Push', es: 'Empuje warehouse' }, note: { zh: '更黑、更重、更直给，低频和驱动感明显拉满。', en: 'Darker, heavier, and more direct with stronger low-end drive.', es: 'Más oscuro, pesado y directo con graves más marcados.' }, genreId: 'minimalTechno', energy: 4, intensity: 4, pulse: 3, bass: 5, brightness: 2, tempo: 3, variation: 2 },
+  { id: 'acidline', labels: { zh: 'Acid 线条', en: 'Acid Line', es: 'Línea acid' }, note: { zh: '带尖锐起伏和更多咬感，适合快速录入。', en: 'Sharper motion and bite for rapid logging.', es: 'Más filo y mordida para registrar rápido.' }, genreId: 'acidRave', energy: 4, intensity: 5, pulse: 4, bass: 4, brightness: 4, tempo: 4, variation: 5 },
+  { id: 'dubmist', labels: { zh: 'Dub 雾面', en: 'Dub Mist', es: 'Niebla dub' }, note: { zh: '空间更深、低频更软，适合夜间和长时间浏览。', en: 'Deeper space and softer subs for night sessions.', es: 'Más espacio y subgrave suave para sesiones largas.' }, genreId: 'ambientTechno', energy: 2, intensity: 2, pulse: 2, bass: 4, brightness: 1, tempo: 2, variation: 3 },
+  { id: 'melodic', labels: { zh: '旋律推进', en: 'Melodic Lift', es: 'Impulso melódico' }, note: { zh: '更亮、更抬头，适合把节奏推起来。', en: 'Brighter and more uplifting when you want momentum.', es: 'Más brillante y ascendente para ganar impulso.' }, genreId: 'progressiveTrance', energy: 4, intensity: 3, pulse: 3, bass: 3, brightness: 5, tempo: 4, variation: 4 },
+  { id: 'broken', labels: { zh: '碎拍弹性', en: 'Broken Swing', es: 'Swing roto' }, note: { zh: '切分和弹性更强，想要更活的时候用它。', en: 'More syncopation and bounce when you want movement.', es: 'Más síncopa y rebote cuando quieres más movimiento.' }, genreId: 'ukGarage', energy: 4, intensity: 4, pulse: 5, bass: 4, brightness: 3, tempo: 4, variation: 5 },
+];
+
+function musicStyleTextV24(style, field) {
+  const lang = uiLang();
+  return style?.[field]?.[lang] || style?.[field]?.zh || '';
+}
+
+function ensureMusicStyleBoardV24() {
+  const genreList = DOM.musicGenreList;
+  if (!genreList?.parentElement) return null;
+  let wrap = document.getElementById('musicStyleBoardV24');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.id = 'musicStyleBoardV24';
+    wrap.className = 'sound-style-board-v24';
+    wrap.innerHTML = `
+      <div class="mini-title" id="musicStyleBoardTitleV24"></div>
+      <div class="sound-style-list-v24" id="musicStyleListV24"></div>
+      <div class="muted small" id="musicStyleHintV24"></div>`;
+    genreList.insertAdjacentElement('afterend', wrap);
+  }
+  return wrap;
+}
+
+function renderMusicStyleBoardV24(snapshot) {
+  const wrap = ensureMusicStyleBoardV24();
+  if (!wrap) return;
+  const list = document.getElementById('musicStyleListV24');
+  const title = document.getElementById('musicStyleBoardTitleV24');
+  const hint = document.getElementById('musicStyleHintV24');
+  if (title) title.textContent = uiLang() === 'zh' ? 'Techno / 电子风格强化器' : uiLang() === 'es' ? 'Moldeador de estilo electrónico' : 'Electronic style shaper';
+  if (hint) hint.textContent = uiLang() === 'zh' ? '先选流派，再点一个风格模板；模板只是一键起点，下面 8 个参数还能继续细抠。' : uiLang() === 'es' ? 'Elige un género y luego una macro. La macro solo es el punto de partida; abajo sigues afinando los 8 parámetros.' : 'Pick a genre, then a style macro. The macro is only a starting point; the 8 controls below still let you fine-tune everything.';
+  if (!list) return;
+  const activeStyle = state.musicPrefs?.styleId || '';
+  list.innerHTML = MUSIC_STYLE_PRESETS_V24.map((style) => `
+    <button class="sound-style-chip-v24 ${activeStyle === style.id ? 'active' : ''}" type="button" data-music-style-id="${escapeHtml(style.id)}">
+      <strong>${escapeHtml(musicStyleTextV24(style, 'labels'))}</strong>
+      <span>${escapeHtml(musicStyleTextV24(style, 'note'))}</span>
+    </button>`).join('');
+}
+
+function applyMusicStylePresetV24(styleId) {
+  const style = MUSIC_STYLE_PRESETS_V24.find((item) => item.id === styleId);
+  if (!style) return;
+  const controller = initMusicController();
+  state.musicPrefs = { ...(state.musicPrefs || {}), styleId: styleId };
+  if (style.genreId) controller.setGenre(style.genreId);
+  if (Number.isFinite(style.energy)) controller.setEnergy(style.energy);
+  if (Number.isFinite(style.intensity)) controller.setIntensity(style.intensity);
+  if (Number.isFinite(style.pulse)) controller.setPulse(style.pulse);
+  if (Number.isFinite(style.bass)) controller.setBass(style.bass);
+  if (Number.isFinite(style.brightness)) controller.setBrightness(style.brightness);
+  if (Number.isFinite(style.tempo)) controller.setTempo(style.tempo);
+  if (Number.isFinite(style.variation)) controller.setVariation(style.variation);
+  saveMusicPrefs();
+  renderSoundPanel();
+}
+
+function onMusicStylePanelClickV24(e) {
+  const btn = e.target.closest('[data-music-style-id]');
+  if (!btn) return;
+  applyMusicStylePresetV24(btn.dataset.musicStyleId || '');
+}
+
 function renderSoundPanel() {
   if (!DOM.musicGenreList) return;
   const controller = initMusicController();
@@ -1831,6 +1966,7 @@ function renderSoundPanel() {
       <span>${escapeHtml(genre.note[uiLang()] || genre.note.zh)}</span>
     </button>
   `).join('');
+  renderMusicStyleBoardV24(snapshot);
   if (DOM.musicToggleBtn) DOM.musicToggleBtn.textContent = snapshot.isPlaying ? L('musicToggleStop') : L('musicToggleStart');
   if (DOM.soundSummary) {
     DOM.soundSummary.textContent = snapshot.isPlaying
@@ -1911,6 +2047,7 @@ function onMusicPanelClick(e) {
   if (!btn) return;
   const controller = initMusicController();
   controller.setGenre(btn.dataset.genreId);
+  state.musicPrefs = { ...(state.musicPrefs || {}), styleId: '' };
   saveMusicPrefs();
   renderSoundPanel();
 }
@@ -1969,6 +2106,7 @@ function bindEvents() {
   DOM.exploreResults?.addEventListener('click', onExploreResultClick);
 
   DOM.musicGenreList?.addEventListener('click', onMusicPanelClick);
+  document.getElementById('soundPanel')?.addEventListener('click', onMusicStylePanelClickV24);
   DOM.musicToggleBtn?.addEventListener('click', async () => {
     const controller = initMusicController();
     await controller.toggle();
@@ -2629,7 +2767,9 @@ function clearManualForm() {
   DOM.ocrMetaHint.textContent = L('ocrMetaIdle');
   DOM.scanPreviewName.textContent = uiLang() === 'zh' ? '无' : uiLang() === 'es' ? 'Ninguno' : 'None';
   state.ocrParsed = null;
+  state.v24ManualPreviewDirty = false;
   syncManualBasisUi();
+  syncRealtimeNutritionV24();
 }
 
 function saveManualEntry() {
@@ -2668,6 +2808,7 @@ function saveManualEntry() {
   });
   saveLogs();
   markExploreDirty();
+  state.v24ManualPreviewDirty = false;
   DOM.manualStatus.textContent = L('manualSaved', { name });
   renderAll();
   flashUpdate();
@@ -2790,7 +2931,9 @@ function applyParsedToForm(parsed) {
     const input = DOM.manualFields.querySelector(`[data-manual-field="${key}"]`);
     if (input) input.value = round1(value);
   }
+  state.v24ManualPreviewDirty = true;
   syncManualBasisUi();
+  syncRealtimeNutritionV24();
   DOM.ocrMetaHint.textContent = parsed.basis === 'serving'
     ? `${L('manualBasis100g')} / ${L('manualBasisServing')}`
     : (parsed.basis === '100ml' ? L('manualBasis100ml') : L('manualBasis100g'));
@@ -5070,7 +5213,7 @@ function buildRealtimeMetricV20(id, label, snapshot, target) {
 }
 function renderFoodRealtimeBoardV20() {
   if (!DOM.foodRealtimeBoard) return;
-  const snapshot = currentSnapshot();
+  const snapshot = realtimeNutritionSnapshotV24();
   const targets = state.calc?.targets || {};
   const foodCount = snapshot.totalFoodCount || 0;
   const waterMl = snapshot.totals.water || 0;
@@ -5769,6 +5912,7 @@ Object.assign(TEXTS.zh, {
   v22HomeSearchHint: '输入食品名、品牌、菜名或条码。搜不到时会自动切到另一套食品库继续找。',
   v22HomeSearchBtn: '搜索并记录',
   v22HomeBodyBtn: '身体表格',
+  v22HomeMusicBtn: '音乐实验室',
   v22HomeComboBtn: '套餐',
   v22HomeUploadBtn: '拍照上传',
   v22HomeDataBtn: '数据说明',
@@ -5831,6 +5975,7 @@ Object.assign(TEXTS.en, {
   v22HomeSearchHint: 'Type a food name, brand, dish, or barcode. If the active bank misses, the other bank is searched automatically.',
   v22HomeSearchBtn: 'Search and log',
   v22HomeBodyBtn: 'Body form',
+  v22HomeMusicBtn: 'Music lab',
   v22HomeComboBtn: 'Combos',
   v22HomeUploadBtn: 'Upload',
   v22HomeDataBtn: 'Data',
@@ -5893,6 +6038,7 @@ Object.assign(TEXTS.es, {
   v22HomeSearchHint: 'Escribe comida, marca, plato o código. Si una biblioteca no acierta, se prueba la otra automáticamente.',
   v22HomeSearchBtn: 'Buscar y registrar',
   v22HomeBodyBtn: 'Formulario',
+  v22HomeMusicBtn: 'Música',
   v22HomeComboBtn: 'Combos',
   v22HomeUploadBtn: 'Subir',
   v22HomeDataBtn: 'Datos',
@@ -5942,6 +6088,8 @@ state.v22AudioPrimed = false;
 state.v22LastSearchStatus = '';
 state.v22SearchFallbackRegion = '';
 state.v22PrefetchTimer = null;
+state.v24SearchToken = 0;
+state.v24ManualPreviewDirty = false;
 
 function detectRecommendedDeviceV22() {
   const ua = navigator.userAgent || '';
@@ -6095,6 +6243,7 @@ function ensureV22HomeSearchCard() {
       </div>
       <div class="v22-home-search-actions">
         <button type="button" class="ghost-btn" id="v22HomeBodyBtn"></button>
+        <button type="button" class="ghost-btn" id="v22HomeMusicBtn"></button>
         <button type="button" class="ghost-btn" id="v22HomeComboBtn"></button>
         <button type="button" class="ghost-btn" id="v22HomeUploadBtn"></button>
         <button type="button" class="ghost-btn" id="v22HomeDataBtn"></button>
@@ -6113,6 +6262,7 @@ function ensureV22HomeSearchCard() {
       runV22HomeSearch();
     });
     card.querySelector('#v22HomeBodyBtn')?.addEventListener('click', () => openV22Sheet('body'));
+    card.querySelector('#v22HomeMusicBtn')?.addEventListener('click', () => openV22Sheet('music'));
     card.querySelector('#v22HomeComboBtn')?.addEventListener('click', () => openV22Sheet('combo'));
     card.querySelector('#v22HomeUploadBtn')?.addEventListener('click', () => openV22Sheet('upload', { scrollTo: '#capturePanel' }));
     card.querySelector('#v22HomeDataBtn')?.addEventListener('click', () => openV22Sheet('data'));
@@ -6127,6 +6277,7 @@ function refreshV22HomeSearchCopy() {
   set('v22HomeSearchLabel', L('foodSearchPlaceholder'));
   set('v22HomeSearchBtn', L('v22HomeSearchBtn'));
   set('v22HomeBodyBtn', L('v22HomeBodyBtn'));
+  set('v22HomeMusicBtn', L('v22HomeMusicBtn'));
   set('v22HomeComboBtn', L('v22HomeComboBtn'));
   set('v22HomeUploadBtn', L('v22HomeUploadBtn'));
   set('v22HomeDataBtn', L('v22HomeDataBtn'));
@@ -6206,6 +6357,7 @@ function closeV22Sheet() {
   });
   state.v22SheetPanels = [];
   state.v22CurrentSheet = '';
+  document.body.classList.remove('v22-sheet-open');
   sheet.backdrop.classList.remove('show');
   sheet.host.classList.remove('open');
   sheet.backdrop.hidden = true;
@@ -6238,6 +6390,7 @@ function openV22Sheet(key, options = {}) {
   });
   state.v22SheetPanels = [...config.panels];
   state.v22CurrentSheet = key;
+  document.body.classList.add('v22-sheet-open');
   applyV22SheetHeader(config);
   sheet.backdrop.hidden = false;
   sheet.host.hidden = false;
@@ -6334,13 +6487,17 @@ function averageOf(...values) {
 function decorateV22BodyStage() {
   const wrap = document.querySelector('.body-model-stage-wrap-v13') || document.querySelector('.body-model-stage-wrap');
   if (!wrap) return;
-  let orbit = document.getElementById('v22NutritionOrbit');
+  document.getElementById('v22NutritionOrbit')?.remove();
+  const stageHost = wrap.parentElement || wrap;
+  let dock = document.getElementById('v22NutritionDock');
   let zones = document.getElementById('v22BodyZoneOrbit');
-  if (!orbit) {
-    orbit = document.createElement('div');
-    orbit.id = 'v22NutritionOrbit';
-    orbit.className = 'v22-nutrition-orbit';
-    wrap.appendChild(orbit);
+  if (!dock) {
+    dock = document.createElement('div');
+    dock.id = 'v22NutritionDock';
+    dock.className = 'v22-nutrition-dock';
+    wrap.insertAdjacentElement('afterend', dock);
+  } else if (dock.previousElementSibling !== wrap && stageHost.contains(dock)) {
+    wrap.insertAdjacentElement('afterend', dock);
   }
   if (!zones) {
     zones = document.createElement('div');
@@ -6348,29 +6505,34 @@ function decorateV22BodyStage() {
     zones.className = 'v22-body-zone-orbit';
     wrap.appendChild(zones);
   }
-  const snapshot = currentSnapshot();
+  const snapshot = realtimeNutritionSnapshotV24();
   const targets = state.calc?.targets || {};
   const nutrients = [
     { id: 'kcal', label: L('v22NutrientKcal') },
     { id: 'protein', label: L('v22NutrientProtein') },
     { id: 'fiber', label: L('v22NutrientFiber') },
     { id: 'water', label: L('v22NutrientWater') },
-  ].map((item, index) => ({ ...item, index, ...formatProgressStateV22(snapshot[item.id], targets[item.id], item.id) }));
-  orbit.innerHTML = nutrients.map((item) => `
-    <button type="button" class="v22-nutrient-badge pos-${item.index}" data-v22-nutrient="${escapeHtml(item.id)}">
+  ].map((item) => ({
+    ...item,
+    ...formatProgressStateV22(snapshot.totals?.[item.id], targets[item.id], item.id),
+  }));
+  dock.innerHTML = nutrients.map((item) => `
+    <button type="button" class="v22-nutrient-card" data-v22-nutrient="${escapeHtml(item.id)}">
       <div class="v22-nutrient-ring" style="--fill:${escapeHtml(item.fill)}"></div>
-      <strong>${escapeHtml(item.label)}</strong>
-      <span>${escapeHtml(item.currentText)} / ${escapeHtml(item.targetText)}</span>
-      <small>${escapeHtml(item.stateText)}</small>
+      <div class="v22-nutrient-copy">
+        <strong>${escapeHtml(item.label)}</strong>
+        <span>${escapeHtml(item.currentText)} / ${escapeHtml(item.targetText)}</span>
+        <small>${escapeHtml(item.stateText)}${snapshot.previewSource === 'manual' ? ` · ${escapeHtml(uiLang() === 'zh' ? '包含未保存输入预览' : uiLang() === 'es' ? 'incluye vista previa sin guardar' : 'includes unsaved preview')}` : ''}</small>
+      </div>
     </button>`).join('');
   zones.innerHTML = bodyZoneRecordsV22().map((zone) => `
     <button type="button" class="v22-body-zone-chip ${escapeHtml(zone.className)} ${zone.hasValue ? '' : 'is-locked'}" data-v22-zone="${escapeHtml(zone.id)}">
       <strong>${escapeHtml(zone.label)}</strong>
       <span>${escapeHtml(zoneValueTextV22(zone.value))}</span>
     </button>`).join('');
-  if (!orbit.dataset.boundV22) {
-    orbit.dataset.boundV22 = '1';
-    orbit.addEventListener('click', (event) => {
+  if (!dock.dataset.boundV22) {
+    dock.dataset.boundV22 = '1';
+    dock.addEventListener('click', (event) => {
       const btn = event.target.closest('[data-v22-nutrient]');
       if (!btn) return;
       const nutrient = btn.dataset.v22Nutrient;
@@ -6453,6 +6615,88 @@ async function ensureRunningAudioContextV22(ctx) {
   return ctx.state === 'running';
 }
 
+function yieldToMainV24() {
+  return new Promise((resolve) => window.setTimeout(resolve, 0));
+}
+
+async function decorateFoodBankBatchV24(foods, key) {
+  const foodMap = new Map();
+  const batchSize = 72;
+  for (let index = 0; index < foods.length; index += 1) {
+    const food = foods[index];
+    food._regionKey = key;
+    food._norm = normalizedFoodNutrients(food);
+    food._servingGram = parseServingSizeGrams(food.s || food.serving || food.q || '') || null;
+    food._labels = food.labels || buildFoodLabels(food);
+    food._displayName = foodLabelForLang(food, uiLang());
+    food._originalName = prefersOriginalAsSubtitle(food, uiLang()) ? (food._labels.original || food.n || '') : '';
+    food._metaLine = [food.b, food.g, food.q].filter(Boolean).join(' · ');
+    food._search = buildFoodSearchText(food, food._labels);
+    food._presentIds = foodKnownNutrientIds(food);
+    if (food.c) foodMap.set(food.c, food);
+    if ((index + 1) % batchSize === 0) {
+      if (DOM.foodDataStatus) DOM.foodDataStatus.textContent = `${L('foodLibLoading')} · ${regionName(key)} · ${fmtInt(Math.min(index + 1, foods.length))}/${fmtInt(foods.length)}`;
+      await yieldToMainV24();
+    }
+  }
+  return foodMap;
+}
+
+function renderV22SearchLoadingV24(raw, regionKey) {
+  const prefix = state.lastSearchIntent?.active ? searchV13Text('hintActive') : searchV13Text('hintIdle');
+  if (DOM.searchHint) DOM.searchHint.textContent = `${prefix} · ${L('foodLibLoading')} · ${regionName(regionKey)}`;
+  if (DOM.foodSearchResults) DOM.foodSearchResults.innerHTML = `
+    <div class="empty-state is-loading">
+      <h3>${escapeHtml(L('foodLibLoading'))}</h3>
+      <p>${escapeHtml(regionName(regionKey))} · ${escapeHtml(raw)}</p>
+    </div>`;
+}
+
+function commitV22SearchResultsV24(raw, active, fallback, primaryResults, secondaryResults) {
+  const mergedResults = mergeSearchResultsV22(primaryResults || [], secondaryResults || []);
+  state.lastResults = mergedResults;
+  const primaryCount = (primaryResults || []).length;
+  const secondaryCount = (secondaryResults || []).length;
+  const prefix = state.lastSearchIntent?.active ? searchV13Text('hintActive') : searchV13Text('hintIdle');
+  if (mergedResults.length) {
+    const notes = [];
+    if (!primaryCount && secondaryCount) {
+      state.v22SearchFallbackRegion = fallback;
+      state.v22LastSearchStatus = L('v22SearchFallback', { name: regionName(fallback) });
+      notes.push(state.v22LastSearchStatus);
+    } else if (primaryCount && secondaryCount) {
+      state.v22SearchFallbackRegion = fallback;
+      state.v22LastSearchStatus = L('v22SearchBlend', { primary: regionName(active), secondary: regionName(fallback) });
+      notes.push(state.v22LastSearchStatus);
+    } else {
+      state.v22SearchFallbackRegion = '';
+      state.v22LastSearchStatus = '';
+    }
+    if (DOM.searchHint) {
+      const banksText = primaryCount && secondaryCount
+        ? `${regionName(active)} + ${regionName(fallback)}`
+        : regionName(primaryCount ? active : fallback);
+      DOM.searchHint.textContent = `${prefix} · ${L('searchFound', { count: mergedResults.length })} · ${banksText}`;
+    }
+    if (DOM.foodSearchResults) DOM.foodSearchResults.innerHTML = `${notes.length ? `<div class="v22-search-fallback-note">${escapeHtml(notes.join(' · '))}</div>` : ''}${mergedResults.map((food, idx) => renderSearchItem(food, idx)).join('')}`;
+    try { syncIntentSearchUi(); } catch {}
+    refreshV22HomeMeta();
+    return mergedResults;
+  }
+  state.v22SearchFallbackRegion = '';
+  state.v22LastSearchStatus = active === 'cn' ? L('searchNoResultsCN') : L('searchNoResultsGlobal');
+  if (DOM.searchHint) DOM.searchHint.textContent = `${prefix} · ${state.v22LastSearchStatus}`;
+  if (DOM.foodSearchResults) DOM.foodSearchResults.innerHTML = `
+    <div class="empty-state">
+      <h3>${escapeHtml(L('searchNoResultsTitle'))}</h3>
+      <p>${escapeHtml(state.v22LastSearchStatus)}</p>
+      <p>${escapeHtml(raw)}</p>
+    </div>`;
+  try { syncIntentSearchUi(); } catch {}
+  refreshV22HomeMeta();
+  return [];
+}
+
 function scheduleOtherBankPrefetchV22() {
   window.clearTimeout(state.v22PrefetchTimer);
   state.v22PrefetchTimer = window.setTimeout(() => {
@@ -6469,19 +6713,7 @@ async function prepareFoodBankV22(regionKey, force = false) {
   state.foodPromises[key] = (async () => {
     try {
       const foods = await fetchFoodsPayload(key);
-      const foodMap = new Map();
-      for (const food of foods) {
-        food._regionKey = key;
-        food._norm = normalizedFoodNutrients(food);
-        food._servingGram = parseServingSizeGrams(food.s || food.serving || food.q || '') || null;
-        food._labels = food.labels || buildFoodLabels(food);
-        food._displayName = foodLabelForLang(food, uiLang());
-        food._originalName = prefersOriginalAsSubtitle(food, uiLang()) ? (food._labels.original || food.n || '') : '';
-        food._metaLine = [food.b, food.g, food.q].filter(Boolean).join(' · ');
-        food._search = buildFoodSearchText(food, food._labels);
-        food._presentIds = foodKnownNutrientIds(food);
-        if (food.c) foodMap.set(food.c, food);
-      }
+      const foodMap = await decorateFoodBankBatchV24(foods, key);
       state.foodBanks[key] = foods;
       state.foodMaps[key] = foodMap;
       if (resolvedFoodRegion() === key) {
@@ -6523,58 +6755,33 @@ doSearch = async function doSearchV22(query) {
   }
   const active = resolvedFoodRegion();
   const fallback = active === 'cn' ? 'global' : 'cn';
-  const [foods, fallbackFoods] = await Promise.all([
-    prepareFoodBankV22(active),
-    prepareFoodBankV22(fallback),
-  ]);
-  if (!foods && !fallbackFoods) return [];
+  const token = (state.v24SearchToken = (state.v24SearchToken || 0) + 1);
+
+  renderV22SearchLoadingV24(raw, active);
+  const foods = await prepareFoodBankV22(active);
+  if (token !== state.v24SearchToken) return state.lastResults || [];
 
   const primaryResults = tagSearchResultsRegionV22(searchFoods(raw, foods || []), active);
-  const secondaryResults = tagSearchResultsRegionV22(searchFoods(raw, fallbackFoods || []), fallback);
-  const mergedResults = mergeSearchResultsV22(primaryResults, secondaryResults);
-  state.lastResults = mergedResults;
-
-  const primaryCount = primaryResults.length;
-  const secondaryCount = secondaryResults.length;
-  const prefix = state.lastSearchIntent?.active ? searchV13Text('hintActive') : searchV13Text('hintIdle');
-
-  if (mergedResults.length) {
-    const notes = [];
-    if (!primaryCount && secondaryCount) {
-      state.v22SearchFallbackRegion = fallback;
-      state.v22LastSearchStatus = L('v22SearchFallback', { name: regionName(fallback) });
-      notes.push(state.v22LastSearchStatus);
-    } else if (primaryCount && secondaryCount) {
-      state.v22SearchFallbackRegion = fallback;
-      state.v22LastSearchStatus = L('v22SearchBlend', { primary: regionName(active), secondary: regionName(fallback) });
-      notes.push(state.v22LastSearchStatus);
-    } else {
-      state.v22SearchFallbackRegion = '';
-      state.v22LastSearchStatus = '';
+  if (primaryResults.length) {
+    const committed = commitV22SearchResultsV24(raw, active, fallback, primaryResults, []);
+    if (primaryResults.length < 8) {
+      void (async () => {
+        const fallbackFoods = await prepareFoodBankV22(fallback);
+        if (token !== state.v24SearchToken) return;
+        const secondaryResults = tagSearchResultsRegionV22(searchFoods(raw, fallbackFoods || []), fallback);
+        if (!secondaryResults.length) return;
+        if (mergeSearchResultsV22(primaryResults, secondaryResults).length <= committed.length) return;
+        commitV22SearchResultsV24(raw, active, fallback, primaryResults, secondaryResults);
+      })().catch(() => null);
     }
-    if (DOM.searchHint) {
-      const banksText = primaryCount && secondaryCount
-        ? `${regionName(active)} + ${regionName(fallback)}`
-        : regionName(primaryCount ? active : fallback);
-      DOM.searchHint.textContent = `${prefix} · ${L('searchFound', { count: mergedResults.length })} · ${banksText}`;
-    }
-    DOM.foodSearchResults.innerHTML = `${notes.length ? `<div class="v22-search-fallback-note">${escapeHtml(notes.join(' · '))}</div>` : ''}${mergedResults.map((food, idx) => renderSearchItem(food, idx)).join('')}`;
-    try { syncIntentSearchUi(); } catch {}
-    refreshV22HomeMeta();
-    return mergedResults;
+    return committed;
   }
 
-  state.v22SearchFallbackRegion = '';
-  state.v22LastSearchStatus = active === 'cn' ? L('searchNoResultsCN') : L('searchNoResultsGlobal');
-  if (DOM.searchHint) DOM.searchHint.textContent = `${prefix} · ${state.v22LastSearchStatus}`;
-  DOM.foodSearchResults.innerHTML = `
-    <div class="empty-state search-empty-state">
-      <p>${escapeHtml(state.v22LastSearchStatus)}</p>
-      <button class="ghost-btn" type="button" data-region-switch-to="${escapeHtml(fallback)}">${escapeHtml(fallback === 'cn' ? L('switchToChina') : L('switchToGlobal'))}</button>
-    </div>`;
-  try { syncIntentSearchUi(); } catch {}
-  refreshV22HomeMeta();
-  return [];
+  renderV22SearchLoadingV24(raw, fallback);
+  const fallbackFoods = await prepareFoodBankV22(fallback);
+  if (token !== state.v24SearchToken) return state.lastResults || [];
+  const secondaryResults = tagSearchResultsRegionV22(searchFoods(raw, fallbackFoods || []), fallback);
+  return commitV22SearchResultsV24(raw, active, fallback, primaryResults, secondaryResults);
 };
 
 const legacyOpenPanelV22 = openPanel;
@@ -6666,6 +6873,31 @@ function bindV22FlowEvents() {
     decorateV22BodyStage();
   });
 }
+function bindV24MobileHeaderCollapse() {
+  const header = document.querySelector('.app-header');
+  if (!header || header.dataset.v24HeaderBound) return;
+  header.dataset.v24HeaderBound = '1';
+  let lastY = Math.max(0, window.scrollY || window.pageYOffset || 0);
+  let ticking = false;
+  const update = () => {
+    ticking = false;
+    const y = Math.max(0, window.scrollY || window.pageYOffset || 0);
+    const scrollingDown = y > lastY + 4;
+    const mobile = document.body.classList.contains('v22-mobile-first');
+    header.classList.toggle('is-condensed', mobile && y > 24);
+    header.classList.toggle('is-hidden', mobile && y > 148 && scrollingDown && !document.body.classList.contains('v22-sheet-open'));
+    lastY = y;
+  };
+  const queue = () => {
+    if (ticking) return;
+    ticking = true;
+    window.requestAnimationFrame(update);
+  };
+  window.addEventListener('scroll', queue, { passive: true });
+  window.addEventListener('resize', queue, { passive: true });
+  queue();
+}
+
 function initV22Layout() {
   ensureV22HomeStructure();
   ensureV22SheetShell();
@@ -6673,6 +6905,8 @@ function initV22Layout() {
   applyDeviceModeV22();
   bindV22AudioUnlock();
   bindV22FlowEvents();
+  bindRealtimeNutritionPreviewV24();
+  bindV24MobileHeaderCollapse();
   patchOpenBodyPanelV22();
   if (DOM.musicStatus && /Macintosh|Mac OS X/i.test(navigator.userAgent || '')) {
     DOM.musicStatus.textContent = `${L('v22SheetMusicNote')} · ${DOM.musicStatus.textContent || ''}`;

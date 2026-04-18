@@ -1294,6 +1294,41 @@ body[data-platform="ios"] .mobile-dock {
   background: linear-gradient(180deg, rgba(248, 250, 255, 0.96), rgba(241, 246, 255, 0.84));
   border: 1px solid rgba(255, 255, 255, 0.76);
   box-shadow: var(--shadow-sm);
+  touch-action: manipulation;
+}
+.sound-style-board-v24 {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.sound-style-list-v24 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.sound-style-chip-v24 {
+  display: grid;
+  gap: 5px;
+  padding: 12px 13px;
+  text-align: left;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(244,248,255,0.82));
+  box-shadow: var(--shadow-sm);
+  touch-action: manipulation;
+}
+.sound-style-chip-v24.active {
+  background: linear-gradient(135deg, rgba(10,132,255,0.14), rgba(79,70,229,0.14));
+  border-color: rgba(10,132,255,0.22);
+}
+.sound-style-chip-v24 strong {
+  font-size: 13px;
+  line-height: 1.35;
+}
+.sound-style-chip-v24 span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 .sound-control-grid {
   display: grid;
@@ -2852,6 +2887,12 @@ textarea {
     padding: 16px;
     border-radius: 26px;
   }
+  .v22-nutrition-dock {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sound-style-list-v24 {
+    grid-template-columns: 1fr;
+  }
   .body-model-panel-v13,
   .body-summary-panel-v13,
   .body-timeline-card,
@@ -3948,6 +3989,31 @@ body.v22-mobile-first .app-header {
   backdrop-filter: blur(22px);
   -webkit-backdrop-filter: blur(22px);
   box-shadow: 0 18px 46px rgba(15, 23, 42, 0.10);
+  max-height: 240px;
+  overflow: hidden;
+  transition: max-height .24s ease, padding .22s ease, margin-bottom .22s ease, opacity .22s ease, transform .22s ease, box-shadow .22s ease;
+}
+body.v22-mobile-first .app-header.is-condensed {
+  padding: 10px 12px;
+  max-height: 74px;
+}
+body.v22-mobile-first .app-header.is-condensed .header-side {
+  display: none !important;
+}
+body.v22-mobile-first .app-header.is-condensed .brand-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+}
+body.v22-mobile-first .app-header.is-hidden {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-bottom: 6px;
+  opacity: 0;
+  transform: translateY(-10px);
+  box-shadow: none;
+  pointer-events: none;
 }
 body.v22-mobile-first .brand-wrap {
   gap: 12px;
@@ -4009,6 +4075,16 @@ body.v22-mobile-first .body-model-stage-wrap-v13 {
   border-radius: 28px;
   background: radial-gradient(circle at 50% 24%, rgba(255, 255, 255, 0.06), transparent 34%);
 }
+body.v22-mobile-first .v22-body-zone-chip {
+  padding: 7px 10px;
+  font-size: 10px;
+  max-width: 118px;
+}
+body.v22-mobile-first .v22-body-zone-chip.zone-chest { top: 88px; }
+body.v22-mobile-first .v22-body-zone-chip.zone-arms { top: 180px; left: 14px; }
+body.v22-mobile-first .v22-body-zone-chip.zone-waist { top: 286px; }
+body.v22-mobile-first .v22-body-zone-chip.zone-hip { top: 360px; right: 14px; }
+body.v22-mobile-first .v22-body-zone-chip.zone-legs { bottom: 118px; }
 body.v22-mobile-first .body-timeline-card,
 body.v22-mobile-first .body-heat-card,
 body.v22-mobile-first .body-compare-block,
@@ -4131,6 +4207,10 @@ body.v22-mobile-first .body-action-hub-btn.is-hidden {
 .v22-home-search-actions .ghost-btn,
 .v22-home-search-actions .primary-btn {
   min-height: 40px;
+  touch-action: manipulation;
+}
+.empty-state.is-loading {
+  opacity: 0.82;
 }
 .v22-home-search-status {
   display: flex;
@@ -4150,6 +4230,44 @@ body.v22-mobile-first .body-action-hub-btn.is-hidden {
   inset: 0;
   pointer-events: none;
   z-index: 4;
+}
+.v22-nutrition-dock {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.v22-nutrient-card {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  min-height: 88px;
+  padding: 12px;
+  border-radius: 22px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(8, 14, 30, 0.72);
+  box-shadow: 0 16px 34px rgba(0,0,0,0.18);
+  color: #f2f6ff;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  touch-action: manipulation;
+}
+.v22-nutrient-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.v22-nutrient-copy strong {
+  font-size: 13px;
+}
+.v22-nutrient-copy span,
+.v22-nutrient-copy small {
+  font-size: 11px;
+  color: rgba(236,242,255,0.76);
+  line-height: 1.45;
 }
 .v22-nutrient-badge {
   position: absolute;

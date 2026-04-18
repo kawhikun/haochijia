@@ -1563,7 +1563,7 @@ Object.assign(BODY_TEXTS.zh, {
   heatLegendReduce: '收紧 / 下降',
   heatLegendIncrease: '增加 / 扩张',
   meshMode: 'WebGL mesh',
-  fallbackMode: '轮廓回退',
+  fallbackMode: '本地立体轮廓',
   timelineLatest: '最新帧',
   timelineFrame: '第 {index} / {count} 次',
   floatingWaist: '腰',
@@ -1591,7 +1591,7 @@ Object.assign(BODY_TEXTS.en, {
   heatLegendReduce: 'tightening / down',
   heatLegendIncrease: 'growth / up',
   meshMode: 'WebGL mesh',
-  fallbackMode: 'outline fallback',
+  fallbackMode: 'local 3D silhouette',
   timelineLatest: 'Latest frame',
   timelineFrame: 'Record {index} / {count}',
   floatingWaist: 'Waist',
@@ -1619,7 +1619,7 @@ Object.assign(BODY_TEXTS.es, {
   heatLegendReduce: 'reduce / baja',
   heatLegendIncrease: 'crece / sube',
   meshMode: 'malla WebGL',
-  fallbackMode: 'modo contorno',
+  fallbackMode: 'silueta 3D local',
   timelineLatest: 'Último fotograma',
   timelineFrame: 'Registro {index} / {count}',
   floatingWaist: 'Cintura',
@@ -1748,9 +1748,28 @@ const BODY_V13_HERO_HTML = `
 `;
 
 const BODY_V13_REMOTE = {
-  three: 'https://unpkg.com/three@0.180.0/build/three.module.js?module',
-  orbit: 'https://unpkg.com/three@0.180.0/examples/jsm/controls/OrbitControls.js?module',
+  three: [
+    'https://unpkg.com/three@0.180.0/build/three.module.js?module',
+    'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js/+esm',
+  ],
+  orbit: [
+    'https://unpkg.com/three@0.180.0/examples/jsm/controls/OrbitControls.js?module',
+    'https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/controls/OrbitControls.js/+esm',
+  ],
 };
+
+async function importBodyModuleFromSources(sources) {
+  const list = Array.isArray(sources) ? sources : [sources];
+  let lastError = null;
+  for (const src of list) {
+    try {
+      return await import(src);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error('body module import failed');
+}
 
 const legacyBodyInit = initBodyModule;
 const legacyBodyCreateScene = createBodyScene;
@@ -2187,8 +2206,8 @@ function loadBodySceneModules(proxy, canvas) {
   if (bodyState.webglLoadStarted) return;
   bodyState.webglLoadStarted = true;
   Promise.all([
-    import(BODY_V13_REMOTE.three),
-    import(BODY_V13_REMOTE.orbit),
+    importBodyModuleFromSources(BODY_V13_REMOTE.three),
+    importBodyModuleFromSources(BODY_V13_REMOTE.orbit),
   ]).then(([THREE, orbitModule]) => {
     if (!canvas?.isConnected) return;
     const webglScene = createWebGLBodyScene(canvas, THREE, orbitModule.OrbitControls);
