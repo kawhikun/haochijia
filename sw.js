@@ -1,4 +1,4 @@
-const CACHE_NAME = 'haochijia-v31-distilled-20260419-r1';
+const CACHE_NAME = 'haochijia-v26-focus-fix-20260418-r1';
 const CORE = [
   './',
   './index.html',

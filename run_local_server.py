@@ -38,6 +38,10 @@ class QuietHandler(SimpleHTTPRequestHandler):
 
 def main() -> None:
     os.chdir(ROOT)
+    try:
+        subprocess.run([sys.executable, str(ROOT / 'sync_request_plan_log.py')], check=False)
+    except Exception:
+        pass
     port = find_port(HOST, START_PORT)
     server = ThreadingHTTPServer((HOST, port), QuietHandler)
     url = f'http://{HOST}:{port}/index.html'
