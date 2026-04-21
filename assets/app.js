@@ -763,12 +763,12 @@ function togglePanel(id) {
 
 function openPanel(id) {
   if (id === 'top') {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: smoothBehaviorV27() });
     return;
   }
   setPanelState(id, true);
   const el = document.querySelector(`[data-fold-id="${id}"]`);
-  if (el?.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (el?.scrollIntoView) el.scrollIntoView({ behavior: smoothBehaviorV27(), block: 'start' });
 }
 
 
@@ -1420,13 +1420,21 @@ function applyLanguage() {
 }
 function keywordForNutrient(id) {
   const map = {
-    protein: { zh: '鸡胸 酸奶 豆腐 鸡蛋 蛋白', en: 'chicken yogurt tofu egg protein', es: 'pollo yogur tofu huevo proteína' },
+    protein: { zh: '鸡胸 酸奶 豆腐 鸡蛋 高蛋白', en: 'chicken yogurt tofu egg high protein', es: 'pollo yogur tofu huevo alta proteína' },
+    carbs: { zh: '米饭 燕麦 全麦 面包 土豆 碳水', en: 'rice oats wholegrain bread potato carbs', es: 'arroz avena pan integral patata carbohidratos' },
+    fat: { zh: '牛油果 坚果 三文鱼 橄榄油 脂肪', en: 'avocado nuts salmon olive oil healthy fat', es: 'aguacate frutos secos salmón aceite de oliva grasa' },
     fiber: { zh: '燕麦 豆 蔬菜 全麦 纤维', en: 'oats beans vegetables wholegrain fiber', es: 'avena frijoles verduras integral fibra' },
-    potassium: { zh: '香蕉 土豆 豆 菠菜 钾', en: 'banana potato beans spinach potassium', es: 'banana patata frijoles espinaca potasio' },
-    calcium: { zh: '牛奶 酸奶 奶酪 豆腐 钙', en: 'milk yogurt cheese tofu calcium', es: 'leche yogur queso tofu calcio' },
-    iron: { zh: '牛肉 豆 菠菜 铁', en: 'beef beans spinach iron', es: 'ternera frijoles espinaca hierro' },
     water: { zh: '', en: '', es: '' },
+    calcium: { zh: '牛奶 酸奶 奶酪 豆腐 钙', en: 'milk yogurt cheese tofu calcium', es: 'leche yogur queso tofu calcio' },
+    vitaminD: { zh: '三文鱼 蛋黄 强化牛奶 维生素D', en: 'salmon egg yolk fortified milk vitamin D', es: 'salmón yema leche fortificada vitamina D' },
+    vitaminK: { zh: '菠菜 羽衣甘蓝 西兰花 维生素K', en: 'spinach kale broccoli vitamin K', es: 'espinaca kale brócoli vitamina K' },
+    vitaminB12: { zh: '牛肉 鸡蛋 牛奶 贝类 维生素B12', en: 'beef eggs milk shellfish vitamin B12', es: 'ternera huevos leche marisco vitamina B12' },
+    iron: { zh: '牛肉 豆 菠菜 铁', en: 'beef beans spinach iron', es: 'ternera frijoles espinaca hierro' },
+    folate: { zh: '深绿叶菜 豆类 叶酸', en: 'leafy greens beans folate', es: 'verduras de hoja frijoles folato' },
+    omega3: { zh: '三文鱼 沙丁鱼 亚麻籽 核桃 omega3', en: 'salmon sardine flax walnut omega 3', es: 'salmón sardina lino nuez omega 3' },
+    potassium: { zh: '香蕉 土豆 豆 菠菜 钾', en: 'banana potato beans spinach potassium', es: 'banana patata frijoles espinaca potasio' },
     sodium: { zh: '低盐 原味', en: 'low sodium plain', es: 'bajo sodio natural' },
+    satFat: { zh: '低饱和脂肪 低脂', en: 'low saturated fat lean', es: 'baja grasa saturada magro' },
   };
   return map[id]?.[uiLang()] || map[id]?.zh || '';
 }
@@ -1450,7 +1458,7 @@ function quickSearch(text) {
   openPanel('food');
   DOM.foodSearchInput.value = text;
   doSearch(text);
-  DOM.foodSearchInput.focus();
+  safeFocusV27(DOM.foodSearchInput);
 }
 function renderQuestStrip() {
   if (!DOM.questStrip) return;
@@ -2076,22 +2084,31 @@ function bindMusicTapDelegationV26() {
   const panel = document.getElementById('soundPanel');
   if (!panel || panel.dataset.v26MusicTapBound === '1') return;
   panel.dataset.v26MusicTapBound = '1';
+  let lastTapAt = 0;
   const dispatch = (event) => {
-    const target = event.target?.closest?.('[data-genre-id],[data-music-style-id]');
-    if (!target) return;
-    if (event.type === 'touchend') event.preventDefault();
+    const target = closestFromEventV27(event, '[data-genre-id],[data-music-style-id]');
+    if (!target || !panel.contains(target)) return;
+    const now = Date.now();
+    if (event.type !== 'click' && now - lastTapAt < 28) return;
+    lastTapAt = now;
+    if (event.cancelable) event.preventDefault();
+    void unlockMusicAudioV22('explicit');
     if (target.dataset.genreId) {
       handleMusicGenreActionV26(target.dataset.genreId || '');
-      return;
+    } else if (target.dataset.musicStyleId) {
+      handleMusicStyleActionV26(target.dataset.musicStyleId || '');
     }
-    if (target.dataset.musicStyleId) handleMusicStyleActionV26(target.dataset.musicStyleId || '');
+    target.classList.add('is-tapped');
+    window.setTimeout(() => target.classList.remove('is-tapped'), 180);
   };
+  panel.addEventListener('pointerup', dispatch);
   panel.addEventListener('click', dispatch);
   panel.addEventListener('touchend', dispatch, { passive: false });
 }
 
 
 function init() {
+
   IDS.forEach((id) => { DOM[id] = document.getElementById(id); });
   document.body.dataset.platform = state.platform;
   if (DOM.logDate) DOM.logDate.value = state.date;
@@ -3436,7 +3453,7 @@ function ensureIntentSearchUi() {
       state.lastSearchIntent = analyzeFoodIntentQuery(value);
       syncIntentSearchUi();
       doSearch(value);
-      DOM.foodSearchInput.focus();
+      safeFocusV27(DOM.foodSearchInput);
     });
   }
   return {
@@ -3576,6 +3593,35 @@ renderAll = function renderAll() {
   renderIntentQueryDeck();
   syncIntentSearchUi();
 };
+
+/* ===== v27 mobile stability / orbit prompt refinement ===== */
+Object.assign(TEXTS.zh, {
+  headerText: '顶部信息尽量自动收起；首页优先突出 3D 人体、围绕人体的营养环、食品搜索与手动营养输入。',
+  immersiveHubHint: '主屏只强调 3D 人体、营养环、搜索食品并输入营养；其余功能继续折叠。',
+  v22SheetBodyNote: '缺失部位不要再用锁定文字挡住模型，继续补录即可。',
+  v22SheetIntakeNote: '先搜索食品；手动营养输入、拍照和条码结果都会实时进入营养环与今日进度。',
+  v22HomeSearchHint: '先搜食品；手动营养输入、拍照和条码也会实时联动到人体周围的营养环。',
+  v22FlowBodyReady: '3D 人体主舞台已更新',
+  v26HomeExploreSummary: '展开其余功能',
+});
+Object.assign(TEXTS.en, {
+  headerText: 'Let the header tuck away quickly. Keep the 3D body, orbit nutrition rings, food search, and manual nutrition entry as the visual priority.',
+  immersiveHubHint: 'Home now centers on the 3D body, orbit rings, food search, and nutrition input. Everything else stays folded.',
+  v22SheetBodyNote: 'Missing body parts should not block the model with lock text. Add them later in the body form.',
+  v22SheetIntakeNote: 'Search foods first; manual entry, photo, and barcode results also feed the orbit rings and today progress live.',
+  v22HomeSearchHint: 'Search first; manual nutrition, photo, and barcode results also update the orbit rings around the body live.',
+  v22FlowBodyReady: '3D body stage updated',
+  v26HomeExploreSummary: 'Open the rest',
+});
+Object.assign(TEXTS.es, {
+  headerText: 'El encabezado debe recogerse rápido. La prioridad visual es el cuerpo 3D, los anillos nutricionales, la búsqueda de comida y la entrada manual.',
+  immersiveHubHint: 'La portada se centra en el cuerpo 3D, los anillos, la búsqueda y la entrada nutricional. Lo demás queda plegado.',
+  v22SheetBodyNote: 'Las partes faltantes no deben bloquear el modelo con texto de candado. Puedes completarlas después.',
+  v22SheetIntakeNote: 'Busca primero; la entrada manual, la foto y el código también alimentan en vivo los anillos y el progreso del día.',
+  v22HomeSearchHint: 'Busca primero; la entrada manual, la foto y el código también actualizan en vivo los anillos alrededor del cuerpo.',
+  v22FlowBodyReady: 'Escena corporal 3D actualizada',
+  v26HomeExploreSummary: 'Abrir el resto',
+});
 
 window.addEventListener('DOMContentLoaded', () => {
   renderIntentQueryDeck();
@@ -5727,7 +5773,7 @@ function setWorkspaceV21(id, options = {}) {
     if (next === 'data') setPanelState('data', true, false);
   }
   if (scroll) {
-    try { window.scrollTo({ top: 0, behavior: 'smooth' }); }
+    try { window.scrollTo({ top: 0, behavior: smoothBehaviorV27() }); }
     catch { window.scrollTo(0, 0); }
   }
   setTimeout(() => window.dispatchEvent(new Event('resize')), 60);
@@ -6123,11 +6169,11 @@ const V22_STORAGE = {
 const V22_SHEET_CONFIG = {
   music: { panels: ['soundPanel'], kicker: 'v22SheetMusicKicker', title: 'v22SheetMusicTitle', note: 'v22SheetMusicNote' },
   body: { panels: ['profilePanel', 'bodyPanelCard'], kicker: 'v22SheetBodyKicker', title: 'v22SheetBodyTitle', note: 'v22SheetBodyNote' },
-  intake: { panels: ['foodPanel', 'comboPanel'], kicker: 'v22SheetIntakeKicker', title: 'v22SheetIntakeTitle', note: 'v22SheetIntakeNote' },
+  intake: { panels: ['foodPanel'], kicker: 'v22SheetIntakeKicker', title: 'v22SheetIntakeTitle', note: 'v22SheetIntakeNote' },
   combo: { panels: ['comboPanel'], kicker: 'v22SheetComboKicker', title: 'v22SheetComboTitle', note: 'v22SheetComboNote' },
   today: { panels: ['todayPanel'], kicker: 'v22SheetTodayKicker', title: 'v22SheetTodayTitle', note: 'v22SheetTodayNote' },
   data: { panels: ['dataPanel'], kicker: 'v22SheetDataKicker', title: 'v22SheetDataTitle', note: 'v22SheetDataNote' },
-  upload: { panels: ['foodPanel', 'capturePanel'], kicker: 'v22SheetIntakeKicker', title: 'v22SheetIntakeTitle', note: 'v22SheetIntakeNote' },
+  upload: { panels: ['capturePanel'], kicker: 'v22SheetIntakeKicker', title: 'v22SheetIntakeTitle', note: 'v22SheetIntakeNote' },
 };
 
 state.v22DeviceMode = (() => {
@@ -6168,6 +6214,51 @@ function applyDeviceModeV22(mode = currentDeviceModeV22()) {
 function moveNodeV22(node, host) {
   if (!node || !host || node.parentElement === host) return;
   host.appendChild(node);
+}
+function isMobileSheetViewportV27() {
+  try {
+    return Boolean(window.matchMedia?.('(max-width: 820px)').matches);
+  } catch {
+    return false;
+  }
+}
+function smoothBehaviorV27() {
+  return document.body.classList.contains('v22-mobile-first') || isMobileSheetViewportV27() ? 'auto' : 'smooth';
+}
+function safeFocusV27(node) {
+  if (!node?.focus) return;
+  if (document.body.classList.contains('v22-mobile-first')) return;
+  try {
+    node.focus({ preventScroll: true });
+  } catch {
+    try { node.focus(); } catch {}
+  }
+}
+function scrollWithinContainerV27(container, target, topOffset = 8) {
+  if (!container) return;
+  const node = typeof target === 'string' ? container.querySelector(target) : target;
+  if (!node) return;
+  const containerRect = container.getBoundingClientRect();
+  const nodeRect = node.getBoundingClientRect();
+  const delta = nodeRect.top - containerRect.top + container.scrollTop - topOffset;
+  const nextTop = Math.max(0, Math.round(delta));
+  try {
+    container.scrollTo({ top: nextTop, behavior: 'auto' });
+  } catch {
+    container.scrollTop = nextTop;
+  }
+}
+function closestFromEventV27(event, selector) {
+  const direct = event.target?.closest?.(selector);
+  if (direct) return direct;
+  const path = event.composedPath?.() || [];
+  for (const node of path) {
+    if (node?.closest) {
+      const hit = node.closest(selector);
+      if (hit) return hit;
+    }
+  }
+  return null;
 }
 function v22PanelsStorage() {
   let host = document.getElementById('v22PanelStorage');
@@ -6410,17 +6501,18 @@ function runV22HomeSearch() {
   openV22Sheet('intake', { focusSelector: '#foodSearchInput' });
   if (DOM.foodSearchInput) DOM.foodSearchInput.value = value;
   if (!value) {
-    DOM.foodSearchInput?.focus();
+    safeFocusV27(DOM.foodSearchInput);
     return;
   }
   setTimeout(() => {
     doSearch(value);
-    DOM.foodSearchInput?.focus();
+    safeFocusV27(DOM.foodSearchInput);
   }, 40);
 }
 function ensureV22HomeStructure() {
   document.body.classList.add('v22-mobile-first');
   document.body.classList.add('v20-immersive-home');
+  document.documentElement.classList.add('v22-mobile-first-doc');
   document.body.classList.remove('v21-layered-app');
   const main = document.querySelector('.main-stack');
   if (!main) return;
@@ -6496,6 +6588,8 @@ function openV22Sheet(key, options = {}) {
   applyV22SheetHeader(config);
   sheet.backdrop.hidden = false;
   sheet.host.hidden = false;
+  try { window.scrollTo({ top: 0, behavior: 'auto' }); } catch { try { window.scrollTo(0, 0); } catch {} }
+  try { sheet.body.scrollTo({ top: 0, behavior: 'auto' }); } catch { sheet.body.scrollTop = 0; }
   requestAnimationFrame(() => {
     sheet.backdrop.classList.add('show');
     sheet.host.classList.add('open');
@@ -6506,19 +6600,17 @@ function openV22Sheet(key, options = {}) {
   if (config.panels.includes('comboPanel')) setPanelState('combo', true, false);
   if (config.panels.includes('todayPanel')) setPanelState('today', true, false);
   if (config.panels.includes('dataPanel')) setPanelState('data', true, false);
+  if (config.panels.includes('capturePanel')) setPanelState('capture', true, false);
   if (key === 'body') setTimeout(() => window.__haochijiaToggleBodyPanel?.(true), 10);
   if (key === 'upload') {
     setPanelState('capture', true, false);
-    setTimeout(() => {
-      const target = sheet.body.querySelector('#capturePanel') || sheet.body.querySelector('#foodCaptureInlineCard');
-      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 50);
-  }
-  if (options.focusSelector) {
-    setTimeout(() => sheet.body.querySelector(options.focusSelector)?.focus?.(), 70);
+    setTimeout(() => scrollWithinContainerV27(sheet.body, '#capturePanel', 10), 24);
   }
   if (options.scrollTo) {
-    setTimeout(() => sheet.body.querySelector(options.scrollTo)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+    setTimeout(() => scrollWithinContainerV27(sheet.body, options.scrollTo, 10), 42);
+  }
+  if (options.focusSelector) {
+    setTimeout(() => safeFocusV27(sheet.body.querySelector(options.focusSelector)), 110);
   }
 }
 async function unlockMusicAudioV22(trigger = 'gesture') {
@@ -6557,48 +6649,141 @@ function bindV22AudioUnlock() {
   document.addEventListener('touchstart', unlock, { capture: true, passive: true });
   DOM.musicToggleBtn?.addEventListener('click', () => { void unlockMusicAudioV22('explicit'); }, true);
 }
+function orbitTargetValueV30(target, nutrientId) {
+  if (target && typeof target === 'object') {
+    if (Number.isFinite(target.target)) return Number(target.target);
+    if (Number.isFinite(target.preferred)) return Number(target.preferred);
+    if (Number.isFinite(target.max) && Number.isFinite(target.min)) return Number((target.min + target.max) / 2);
+    if (Number.isFinite(target.max)) return Number(target.max);
+    if (Number.isFinite(target.min)) return Number(target.min);
+  }
+  const fallback = Number(target);
+  if (Number.isFinite(fallback)) return fallback;
+  return nutrientId === 'water' ? 2000 : 0;
+}
+function orbitEvalTargetV30(target, nutrientId, current) {
+  if (target && typeof target === 'object' && target.type) return evaluateTarget(target, current);
+  const targetValue = orbitTargetValueV30(target, nutrientId);
+  return evaluateTarget({ id: nutrientId, type: 'min', target: targetValue }, current);
+}
+function progressStateTextV30(ev) {
+  if (!ev) return L('v22ProgressNeed');
+  if (ev.status === 'good') return L('v22ProgressDone');
+  if (ev.status === 'high') return uiLang() === 'zh' ? '偏高' : uiLang() === 'es' ? 'Algo alto' : 'High';
+  return L('v22ProgressNeed');
+}
 function formatProgressStateV22(current, target, nutrientId) {
-  const safeTarget = Math.max(Number(target) || 0, nutrientId === 'water' ? 100 : 1);
-  const ratio = safeTarget > 0 ? clamp((Number(current) || 0) / safeTarget, 0, 1.2) : 0;
+  const targetValue = orbitTargetValueV30(target, nutrientId);
+  const ev = orbitEvalTargetV30(target, nutrientId, current);
+  const ratio = clamp(ev?.fill ?? (targetValue > 0 ? (Number(current) || 0) / targetValue : 0), 0, 1.2);
   return {
     ratio,
-    fill: `${Math.round(ratio * 360)}deg`,
+    fill: `${Math.round(Math.min(ratio, 1) * 360)}deg`,
     currentText: metric(current, nutrientId),
-    targetText: metric(target, nutrientId),
-    stateText: ratio >= 1 ? L('v22ProgressDone') : L('v22ProgressNeed'),
+    targetText: metric(targetValue, nutrientId),
+    stateText: progressStateTextV30(ev),
   };
 }
-function zoneValueTextV22(value, unit = 'cm') {
-  return Number.isFinite(value) ? `${round1(value)} ${unit}` : L('v22StageLocked');
+function adaptiveOrbitFocusIdsV30(targets) {
+  const profile = sanitizeProfile(state.profile || {});
+  const priorities = [];
+  if (profile.conditions?.boneRisk) priorities.push('calcium', 'vitaminD', 'vitaminK');
+  if (profile.conditions?.anemiaRisk) priorities.push('iron', 'folate', 'vitaminB12');
+  if (profile.conditions?.hypertension) priorities.push('sodium', 'potassium', 'water');
+  if (profile.conditions?.dyslipidemia) priorities.push('satFat', 'fiber', 'omega3');
+  if (profile.smoker) priorities.push('vitaminC', 'water', 'fiber');
+  if (['prediabetes', 'type1', 'type2', 'gestational'].includes(profile.glucoseStatus)) priorities.push('fiber', 'protein', 'carbs');
+  const defaults = ['fiber', 'water', 'calcium', 'potassium', 'vitaminC', 'omega3'];
+  return [...new Set([...priorities, ...defaults])].filter((id) => targets?.[id]).slice(0, 3);
 }
-function bodyZoneRecordsV22() {
-  const latest = window.__haochijiaGetBodyLatestRecord?.() || {};
-  return [
-    { id: 'chest', label: L('v22BodyZoneChest'), className: 'zone-chest', value: latest.chest, hasValue: Number.isFinite(latest.chest) },
-    { id: 'arms', label: L('v22BodyZoneArms'), className: 'zone-arms', value: averageOf(latest.upperArmL, latest.upperArmR, latest.forearmL, latest.forearmR), hasValue: [latest.upperArmL, latest.upperArmR, latest.forearmL, latest.forearmR].some(Number.isFinite) },
-    { id: 'waist', label: L('v22BodyZoneWaist'), className: 'zone-waist', value: latest.waist ?? latest.abdomen, hasValue: Number.isFinite(latest.waist) || Number.isFinite(latest.abdomen) },
-    { id: 'hip', label: L('v22BodyZoneHip'), className: 'zone-hip', value: latest.hip, hasValue: Number.isFinite(latest.hip) },
-    { id: 'legs', label: L('v22BodyZoneLegs'), className: 'zone-legs', value: averageOf(latest.thighL, latest.thighR, latest.calfL, latest.calfR), hasValue: [latest.thighL, latest.thighR, latest.calfL, latest.calfR].some(Number.isFinite) },
+function buildNutritionOrbitItemsV27(snapshot, targets) {
+  const focusIds = adaptiveOrbitFocusIdsV30(targets);
+  const ids = [...new Set(['protein', 'fat', 'carbs', ...focusIds])]
+    .filter((id) => targets?.[id])
+    .slice(0, 6);
+  const fallbacks = ['fiber', 'water', 'calcium', 'potassium', 'vitaminD', 'vitaminB12'];
+  fallbacks.forEach((id) => {
+    if (ids.length >= 6) return;
+    if (targets?.[id] && !ids.includes(id)) ids.push(id);
+  });
+  return ids.slice(0, 6).map((id) => ({
+    id,
+    label: nutrientName(id),
+    isPriority: focusIds.includes(id),
+    ...formatProgressStateV22(snapshot.totals?.[id], targets[id], id),
+  }));
+}
+function nutrientRingLabelTextV27(item) {
+  const percent = Math.round(Math.max(0, Math.min(item.ratio, 1)) * 100);
+  return `${item.isPriority ? '★ ' : ''}${item.label} · ${percent}%`;
+}
+function orbitLabelClassV27(index) {
+  return ['pos-top', 'pos-top-right', 'pos-right', 'pos-bottom-right', 'pos-bottom-left', 'pos-left'][index] || 'pos-top';
+}
+function buildNutritionOrbitSvgV27(items, previewActive = false) {
+  const defs = [
+    { radius: 47.5, width: 1.55 },
+    { radius: 41, width: 1.5 },
+    { radius: 34.5, width: 1.45 },
+    { radius: 28, width: 1.4 },
+    { radius: 21.5, width: 1.35 },
+    { radius: 15, width: 1.3 },
   ];
+  const circles = items.map((item, index) => {
+    const def = defs[index] || defs[defs.length - 1];
+    const circumference = 2 * Math.PI * def.radius;
+    const progress = Math.max(0, Math.min(item.ratio, 1)) * circumference;
+    const offset = circumference - progress;
+    const toneClass = item.isPriority ? 'is-priority' : '';
+    return `
+      <circle class="v27-orbit-track orbit-${index} ${toneClass}" cx="50" cy="50" r="${def.radius}" stroke-width="${def.width}"></circle>
+      <circle class="v27-orbit-progress orbit-${index} ${toneClass} ${item.ratio >= 1 ? 'is-complete' : ''}" cx="50" cy="50" r="${def.radius}" stroke-width="${def.width}" stroke-dasharray="${circumference.toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}"></circle>`;
+  }).join('');
+  const labels = items.map((item, index) => `
+      <button type="button" class="v27-orbit-label ${orbitLabelClassV27(index)} ${item.isPriority ? 'is-priority' : ''}" data-v27-nutrient="${escapeHtml(item.id)}">
+        <strong>${escapeHtml(nutrientRingLabelTextV27(item))}</strong>
+        <span>${escapeHtml(item.currentText)} / ${escapeHtml(item.targetText)}</span>
+      </button>`).join('');
+  const preview = previewActive
+    ? `<div class="v27-orbit-preview-flag">${escapeHtml(uiLang() === 'zh' ? '实时预览已计入营养环' : uiLang() === 'es' ? 'La vista previa ya entra en los anillos' : 'Live preview is already in the rings')}</div>`
+    : '';
+  return `
+    <div class="v27-orbit-stage-shell v30-orbit-stage-shell">
+      <svg class="v27-orbit-svg" viewBox="0 0 100 100" aria-hidden="true">${circles}</svg>
+      ${labels}
+      ${preview}
+    </div>`;
 }
-function averageOf(...values) {
-  const nums = values.filter((value) => Number.isFinite(value));
-  if (!nums.length) return null;
-  return nums.reduce((sum, value) => sum + value, 0) / nums.length;
+function handleNutrientFocusV27(nutrient) {
+  if (!nutrient) return;
+  if (nutrient === 'water') {
+    openV22Sheet('intake');
+    return;
+  }
+  openV22Sheet('intake', { focusSelector: '#foodSearchInput' });
+  const query = keywordForNutrient(nutrient);
+  if (DOM.foodSearchInput) DOM.foodSearchInput.value = query;
+  if (query) setTimeout(() => doSearch(query), 40);
 }
 function decorateV22BodyStage() {
   const wrap = document.querySelector('.body-model-stage-wrap-v13') || document.querySelector('.body-model-stage-wrap');
   if (!wrap) return;
-  document.getElementById('v22NutritionOrbit')?.remove();
-  const stageHost = wrap.parentElement || wrap;
+  const mobileFlow = document.body.classList.contains('v22-mobile-first');
+  let orbit = document.getElementById('v27NutritionOrbitStage');
   let dock = document.getElementById('v22NutritionDock');
   let zones = document.getElementById('v22BodyZoneOrbit');
+  if (!orbit) {
+    orbit = document.createElement('div');
+    orbit.id = 'v27NutritionOrbitStage';
+    orbit.className = 'v27-nutrition-orbit-stage';
+    wrap.appendChild(orbit);
+  }
   if (!dock) {
     dock = document.createElement('div');
     dock.id = 'v22NutritionDock';
     dock.className = 'v22-nutrition-dock';
     wrap.insertAdjacentElement('afterend', dock);
-  } else if (dock.previousElementSibling !== wrap && stageHost.contains(dock)) {
+  } else if (dock.previousElementSibling !== wrap && wrap.parentElement?.contains(dock)) {
     wrap.insertAdjacentElement('afterend', dock);
   }
   if (!zones) {
@@ -6609,43 +6794,45 @@ function decorateV22BodyStage() {
   }
   const snapshot = realtimeNutritionSnapshotV24();
   const targets = state.calc?.targets || {};
-  const nutrients = [
-    { id: 'kcal', label: L('v22NutrientKcal') },
-    { id: 'protein', label: L('v22NutrientProtein') },
-    { id: 'fiber', label: L('v22NutrientFiber') },
-    { id: 'water', label: L('v22NutrientWater') },
-  ].map((item) => ({
-    ...item,
-    ...formatProgressStateV22(snapshot.totals?.[item.id], targets[item.id], item.id),
-  }));
+  const nutrients = buildNutritionOrbitItemsV27(snapshot, targets);
+  orbit.innerHTML = buildNutritionOrbitSvgV27(nutrients, snapshot.previewSource === 'manual');
+  if (!orbit.dataset.boundV27) {
+    orbit.dataset.boundV27 = '1';
+    orbit.addEventListener('click', (event) => {
+      const btn = closestFromEventV27(event, '[data-v27-nutrient]');
+      if (!btn || !orbit.contains(btn)) return;
+      handleNutrientFocusV27(btn.dataset.v27Nutrient || '');
+    });
+  }
+  if (mobileFlow) {
+    dock.hidden = true;
+    dock.innerHTML = '';
+    zones.hidden = true;
+    zones.innerHTML = '';
+    return;
+  }
+  dock.hidden = false;
   dock.innerHTML = nutrients.map((item) => `
-    <button type="button" class="v22-nutrient-card" data-v22-nutrient="${escapeHtml(item.id)}">
+    <button type="button" class="v22-nutrient-card ${item.isPriority ? 'is-priority' : ''}" data-v22-nutrient="${escapeHtml(item.id)}">
       <div class="v22-nutrient-ring" style="--fill:${escapeHtml(item.fill)}"></div>
       <div class="v22-nutrient-copy">
         <strong>${escapeHtml(item.label)}</strong>
         <span>${escapeHtml(item.currentText)} / ${escapeHtml(item.targetText)}</span>
-        <small>${escapeHtml(item.stateText)}${snapshot.previewSource === 'manual' ? ` · ${escapeHtml(uiLang() === 'zh' ? '包含未保存输入预览' : uiLang() === 'es' ? 'incluye vista previa sin guardar' : 'includes unsaved preview')}` : ''}</small>
+        <small>${escapeHtml(item.stateText)}</small>
       </div>
     </button>`).join('');
-  zones.innerHTML = bodyZoneRecordsV22().map((zone) => `
-    <button type="button" class="v22-body-zone-chip ${escapeHtml(zone.className)} ${zone.hasValue ? '' : 'is-locked'}" data-v22-zone="${escapeHtml(zone.id)}">
+  zones.hidden = false;
+  zones.innerHTML = bodyZoneRecordsV22().filter((zone) => zone.hasValue).map((zone) => `
+    <button type="button" class="v22-body-zone-chip ${escapeHtml(zone.className)}" data-v22-zone="${escapeHtml(zone.id)}">
       <strong>${escapeHtml(zone.label)}</strong>
       <span>${escapeHtml(zoneValueTextV22(zone.value))}</span>
     </button>`).join('');
   if (!dock.dataset.boundV22) {
     dock.dataset.boundV22 = '1';
     dock.addEventListener('click', (event) => {
-      const btn = event.target.closest('[data-v22-nutrient]');
-      if (!btn) return;
-      const nutrient = btn.dataset.v22Nutrient;
-      if (nutrient === 'water') {
-        openV22Sheet('intake');
-        return;
-      }
-      openV22Sheet('intake', { focusSelector: '#foodSearchInput' });
-      const query = keywordForNutrient(nutrient);
-      if (DOM.foodSearchInput) DOM.foodSearchInput.value = query;
-      if (query) setTimeout(() => doSearch(query), 40);
+      const btn = closestFromEventV27(event, '[data-v22-nutrient]');
+      if (!btn || !dock.contains(btn)) return;
+      handleNutrientFocusV27(btn.dataset.v22Nutrient || '');
     });
   }
   if (!zones.dataset.boundV22) {
@@ -6941,7 +7128,7 @@ registerServiceWorker = async function registerServiceWorkerV22() {
   try {
     const regs = await navigator.serviceWorker.getRegistrations();
     await Promise.all(regs.map((reg) => reg.unregister().catch(() => false)));
-    const registration = await navigator.serviceWorker.register('./sw.js?v=20260418-v26', { updateViaCache: 'none' });
+    const registration = await navigator.serviceWorker.register('./sw.js?v=20260421-v30-core', { updateViaCache: 'none' });
     await registration.update?.();
   } catch (err) {
     console.warn(err);
@@ -6965,7 +7152,9 @@ function bindV22FlowEvents() {
     decorateV22BodyStage();
     refreshV22HomeMeta();
     if (event.detail?.saved) {
-      closeV22Sheet();
+      try {
+        window.dispatchEvent(new CustomEvent('haochijia:v30-body-saved', { detail: event.detail || {} }));
+      } catch {}
       showToast(L('v22FlowBodyReady'));
     }
   });
@@ -7031,3 +7220,853 @@ if (document.readyState !== 'loading') {
     decorateV22BodyStage();
   }, 0);
 }
+
+/* ===== v28 mobile viewport guard / IME-safe food search / integrated nutrition command ===== */
+state.v28BodyLocks = state.v28BodyLocks || new Set();
+state.v28ScrollLockY = state.v28ScrollLockY || 0;
+state.v28FocusedInput = state.v28FocusedInput || null;
+state.v28SearchCompositionActive = false;
+state.v28SearchCompositionSource = null;
+
+function isMobileViewportV28() {
+  try {
+    return Boolean(window.matchMedia?.('(max-width: 820px)').matches);
+  } catch {
+    return false;
+  }
+}
+
+function isTextEntryFieldV28(node) {
+  const tag = node?.tagName?.toLowerCase?.() || '';
+  if (!['input', 'textarea', 'select'].includes(tag)) return false;
+  if (tag === 'input') {
+    const type = String(node.type || 'text').toLowerCase();
+    if (['button', 'submit', 'reset', 'checkbox', 'radio', 'range', 'color', 'hidden'].includes(type)) return false;
+  }
+  return !node.disabled && !node.readOnly;
+}
+
+function searchInputComposeTextV28() {
+  return uiLang() === 'zh'
+    ? '中文输入中，先不打断你。'
+    : uiLang() === 'es'
+      ? 'Componiendo texto, sin interrumpir la búsqueda.'
+      : 'Composing text. Search waits until you finish.';
+}
+
+function toHalfWidthV28(value) {
+  return String(value || '')
+    .replace(/[\uFF01-\uFF5E]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xFEE0))
+    .replace(/\u3000/g, ' ')
+    .replace(/[·•・]/g, ' ')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'");
+}
+
+const legacyNormalizeSearchV28 = normalizeSearch;
+normalizeSearch = function normalizeSearchV28(value) {
+  return legacyNormalizeSearchV28(toHalfWidthV28(value));
+};
+
+function scrollerForNodeV28(node) {
+  return node?.closest?.('.v22-sheet-body, .quick-sheet-body, .body-panel-body, .fold-body') || null;
+}
+
+function keepFocusedFieldVisibleV28(node) {
+  if (!isMobileViewportV28() || !node?.isConnected) return;
+  const scroller = scrollerForNodeV28(node);
+  if (!scroller) return;
+  const nodeRect = node.getBoundingClientRect();
+  const scrollerRect = scroller.getBoundingClientRect();
+  const topPad = 16;
+  const bottomPad = 28;
+  const above = nodeRect.top < scrollerRect.top + topPad;
+  const below = nodeRect.bottom > scrollerRect.bottom - bottomPad;
+  if (!above && !below) return;
+  const currentTop = scroller.scrollTop;
+  const nextTop = above
+    ? currentTop + (nodeRect.top - scrollerRect.top) - topPad
+    : currentTop + (nodeRect.bottom - scrollerRect.bottom) + bottomPad;
+  try {
+    scroller.scrollTo({ top: Math.max(0, Math.round(nextTop)), behavior: 'auto' });
+  } catch {
+    scroller.scrollTop = Math.max(0, Math.round(nextTop));
+  }
+}
+
+function syncViewportVarsV28() {
+  const vv = window.visualViewport;
+  const layoutHeight = Math.max(0, Math.round(window.innerHeight || document.documentElement.clientHeight || 0));
+  const visualHeight = Math.max(320, Math.round(vv?.height || layoutHeight || 0));
+  const offsetTop = Math.max(0, Math.round(vv?.offsetTop || 0));
+  const keyboard = isMobileViewportV28() ? Math.max(0, layoutHeight - visualHeight - offsetTop) : 0;
+  document.documentElement.style.setProperty('--v28-viewport-h', `${visualHeight}px`);
+  document.documentElement.style.setProperty('--v28-keyboard', `${keyboard}px`);
+  document.body.classList.toggle('v28-keyboard-open', keyboard > 48);
+  if (state.v28FocusedInput?.isConnected) keepFocusedFieldVisibleV28(state.v28FocusedInput);
+}
+
+let viewportSyncRafV28 = 0;
+function queueViewportSyncV28() {
+  if (viewportSyncRafV28) return;
+  viewportSyncRafV28 = window.requestAnimationFrame(() => {
+    viewportSyncRafV28 = 0;
+    syncViewportVarsV28();
+  });
+}
+
+function applyBodyScrollLockV28() {
+  if (!isMobileViewportV28()) return;
+  if (state.v28BodyLocks.size) {
+    if (document.body.classList.contains('v28-scroll-locked')) return;
+    state.v28ScrollLockY = window.scrollY || window.pageYOffset || 0;
+    document.body.style.top = `-${state.v28ScrollLockY}px`;
+    document.body.classList.add('v28-scroll-locked');
+    return;
+  }
+  if (!document.body.classList.contains('v28-scroll-locked')) return;
+  const restoreY = Number(state.v28ScrollLockY) || 0;
+  document.body.classList.remove('v28-scroll-locked');
+  document.body.style.top = '';
+  window.requestAnimationFrame(() => {
+    try { window.scrollTo({ top: restoreY, behavior: 'auto' }); }
+    catch { try { window.scrollTo(0, restoreY); } catch {} }
+  });
+}
+
+function lockBodyScrollV28(reason = 'sheet') {
+  state.v28BodyLocks.add(String(reason || 'sheet'));
+  applyBodyScrollLockV28();
+}
+
+function unlockBodyScrollV28(reason = 'sheet') {
+  state.v28BodyLocks.delete(String(reason || 'sheet'));
+  applyBodyScrollLockV28();
+}
+
+function installViewportGuardV28() {
+  if (document.body.dataset.v28ViewportGuardBound) return;
+  document.body.dataset.v28ViewportGuardBound = '1';
+  syncViewportVarsV28();
+  window.addEventListener('resize', queueViewportSyncV28, { passive: true });
+  window.addEventListener('orientationchange', () => {
+    window.setTimeout(queueViewportSyncV28, 48);
+    window.setTimeout(queueViewportSyncV28, 180);
+  }, { passive: true });
+  window.visualViewport?.addEventListener('resize', queueViewportSyncV28, { passive: true });
+  window.visualViewport?.addEventListener('scroll', queueViewportSyncV28, { passive: true });
+  document.addEventListener('focusin', (event) => {
+    const target = event.target;
+    if (!isTextEntryFieldV28(target)) return;
+    if (!target.closest('.v22-sheet-host, .quick-sheet')) return;
+    state.v28FocusedInput = target;
+    document.body.classList.add('v28-input-active');
+    queueViewportSyncV28();
+    window.setTimeout(() => keepFocusedFieldVisibleV28(target), 96);
+    window.setTimeout(() => keepFocusedFieldVisibleV28(target), 240);
+  }, true);
+  document.addEventListener('focusout', () => {
+    window.setTimeout(() => {
+      const active = document.activeElement;
+      if (isTextEntryFieldV28(active) && active.closest?.('.v22-sheet-host, .quick-sheet')) return;
+      state.v28FocusedInput = null;
+      document.body.classList.remove('v28-input-active');
+      queueViewportSyncV28();
+    }, 72);
+  }, true);
+}
+
+function bindImeSearchInputV28(input, mode = 'food') {
+  if (!input || input.dataset.v28ImeBound) return;
+  input.dataset.v28ImeBound = '1';
+  input.addEventListener('compositionstart', () => {
+    input.dataset.v28Composing = '1';
+    state.v28SearchCompositionActive = true;
+    state.v28SearchCompositionSource = input;
+    if (mode === 'food' && DOM.searchHint) DOM.searchHint.textContent = searchInputComposeTextV28();
+  }, true);
+  input.addEventListener('compositionend', () => {
+    input.dataset.v28Composing = '0';
+    state.v28SearchCompositionActive = false;
+    state.v28SearchCompositionSource = null;
+    if (mode === 'food') {
+      window.setTimeout(() => doSearch(String(input.value || '').trim()), 10);
+    }
+  }, true);
+  input.addEventListener('input', (event) => {
+    if (!event.isComposing && input.dataset.v28Composing !== '1') return;
+    event.stopImmediatePropagation();
+  }, true);
+  input.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    if (!event.isComposing && input.dataset.v28Composing !== '1') return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, true);
+}
+
+function bindSearchImeGuardsV28() {
+  bindImeSearchInputV28(DOM.foodSearchInput, 'food');
+  bindImeSearchInputV28(DOM.quickSheetSearchInput, 'quick');
+  bindImeSearchInputV28(document.getElementById('v22HomeSearchInput'), 'home');
+}
+
+
+
+function homeProgressActionTextV28(type, value) {
+  const lang = uiLang();
+  if (type === 'priority') return lang === 'zh' ? `优先补 ${value}` : lang === 'es' ? `Prioridad: ${value}` : `Top gap: ${value}`;
+  if (type === 'risk') return lang === 'zh' ? `稍微压一下 ${value}` : lang === 'es' ? `Baja un poco ${value}` : `Ease back on ${value}`;
+  if (type === 'good') return lang === 'zh' ? `已经到位 ${value}` : lang === 'es' ? `Ya va bien ${value}` : `Already on track: ${value}`;
+  if (type === 'water') return lang === 'zh' ? '现在补 300 mL 水' : lang === 'es' ? 'Añade 300 mL de agua' : 'Add 300 mL water now';
+  return value;
+}
+
+function homeProgressNoteTextV28(type, item) {
+  const lang = uiLang();
+  if (type === 'priority') return lang === 'zh' ? `还差 ${metric(item.delta, item.id)}` : lang === 'es' ? `Faltan ${metric(item.delta, item.id)}` : `${metric(item.delta, item.id)} to go`;
+  if (type === 'risk') return lang === 'zh' ? `偏高 ${metric(item.delta, item.id)}` : lang === 'es' ? `Algo alto: ${metric(item.delta, item.id)}` : `${metric(item.delta, item.id)} high`;
+  if (type === 'good') return lang === 'zh' ? '继续保持这个节奏。' : lang === 'es' ? 'Mantén este ritmo.' : 'Keep this rhythm.';
+  if (type === 'water') return lang === 'zh' ? `当前 ${metric(item.current || 0, 'water')}` : lang === 'es' ? `Ahora ${metric(item.current || 0, 'water')}` : `Now ${metric(item.current || 0, 'water')}`;
+  return '';
+}
+
+function buildHomeAdviceCardsV28(snapshot, targets) {
+  const cards = [];
+  const gaps = getTopGaps(snapshot, targets, 2);
+  const risks = getTopRisks(snapshot, targets, 1);
+  const done = getDoneItems(snapshot, targets, 2);
+  const waterTarget = Number(targets.water?.target || targets.water || 2000) || 2000;
+  const waterCurrent = Number(snapshot.totals?.water || 0) || 0;
+  if (gaps[0]) {
+    cards.push({
+      tone: 'need',
+      action: 'search',
+      nutrientId: gaps[0].id,
+      title: homeProgressActionTextV28('priority', nutrientName(gaps[0].id)),
+      note: homeProgressNoteTextV28('priority', gaps[0]),
+    });
+  }
+  if (waterCurrent < Math.max(waterTarget * 0.82, 1200)) {
+    cards.push({
+      tone: 'water',
+      action: 'water',
+      nutrientId: 'water',
+      title: homeProgressActionTextV28('water'),
+      note: homeProgressNoteTextV28('water', { current: waterCurrent }),
+    });
+  }
+  if (risks[0]) {
+    cards.push({
+      tone: 'risk',
+      action: 'search',
+      nutrientId: risks[0].id,
+      title: homeProgressActionTextV28('risk', nutrientName(risks[0].id)),
+      note: homeProgressNoteTextV28('risk', risks[0]),
+    });
+  }
+  if (done.length) {
+    cards.push({
+      tone: 'good',
+      action: 'today',
+      nutrientId: done[0].id,
+      title: homeProgressActionTextV28('good', done.map((item) => nutrientName(item.id)).slice(0, 2).join(' · ')),
+      note: homeProgressNoteTextV28('good', done[0]),
+    });
+  }
+  return cards.slice(0, 3);
+}
+
+const legacyRenderV26HomeProgressV28 = renderV26HomeProgress;
+renderV26HomeProgress = function renderV26HomeProgressV28() {
+  const host = document.getElementById('v26HomeProgress');
+  if (!host) {
+    if (typeof legacyRenderV26HomeProgressV28 === 'function') legacyRenderV26HomeProgressV28();
+    return;
+  }
+  const snapshot = realtimeNutritionSnapshotV24();
+  const targets = state.calc?.targets || {};
+  const items = buildNutritionOrbitItemsV27(snapshot, targets).map((item) => ({
+    ...item,
+    percent: Math.round(Math.max(0, Math.min(item.ratio, 1)) * 100),
+  }));
+  const advice = buildHomeAdviceCardsV28(snapshot, targets);
+  const score = computeBalanceScore(snapshot, targets);
+  const note = snapshot.previewSource === 'manual' ? L('v26HomePreviewFlag') : L('v26HomeProgressHint');
+  host.classList.add('v28-home-command');
+  host.innerHTML = `
+    <div class="v28-home-command-head">
+      <div class="v28-home-command-copy">
+        <strong>${escapeHtml(L('foodRealtimeTitle'))}</strong>
+        <span>${escapeHtml(L('v26HomeTodayCount', { count: snapshot.totalFoodCount || 0 }))}</span>
+      </div>
+      <div class="v28-home-command-score">
+        <small>${escapeHtml(L('balanceScore'))}</small>
+        <strong>${escapeHtml(String(score))}</strong>
+      </div>
+    </div>
+    <div class="v28-home-progress-grid">
+      ${items.map((item) => `
+        <article class="v28-home-progress-chip tone-${item.ratio >= 1 ? 'good' : item.ratio >= 0.66 ? 'warn' : 'need'}">
+          <div class="v26-home-progress-ring" style="--fill:${escapeHtml(item.fill)}"></div>
+          <div class="v28-home-progress-copy">
+            <strong>${escapeHtml(item.label)}</strong>
+            <span>${escapeHtml(item.currentText)} / ${escapeHtml(item.targetText)}</span>
+            <small>${escapeHtml(`${item.percent}% · ${item.stateText}`)}</small>
+          </div>
+        </article>`).join('')}
+    </div>
+    <div class="v28-home-action-grid">
+      ${advice.map((card) => `
+        <button type="button" class="v28-home-action-card tone-${escapeHtml(card.tone)}" data-v28-home-action="${escapeHtml(card.action)}" data-v28-nutrient="${escapeHtml(card.nutrientId || '')}">
+          <strong>${escapeHtml(card.title)}</strong>
+          <span>${escapeHtml(card.note)}</span>
+        </button>`).join('')}
+    </div>
+    <div class="v28-home-command-foot">${escapeHtml(note)}</div>`;
+  if (!host.dataset.v28Bound) {
+    host.dataset.v28Bound = '1';
+    host.addEventListener('click', (event) => {
+      const btn = closestFromEventV27(event, '[data-v28-home-action]');
+      if (!btn || !host.contains(btn)) return;
+      const action = btn.dataset.v28HomeAction || '';
+      if (action === 'water') {
+        getDayLog(state.date).items.unshift({
+          type: 'water',
+          amountMl: 300,
+          label: '300 mL',
+          createdAt: new Date().toISOString(),
+        });
+        saveLogs();
+        markExploreDirty();
+        renderAll();
+        showToast('300 mL');
+        return;
+      }
+      if (action === 'search') {
+        handleNutrientFocusV27(btn.dataset.v28Nutrient || '');
+        return;
+      }
+      if (action === 'today') openV22Sheet('today');
+    });
+  }
+};
+
+
+
+/* ===== v28 mobile stability / ime / unified nutrition / smooth actions ===== */
+state.v28FoodDraftGrams = state.v28FoodDraftGrams || Object.create(null);
+state.v28SheetScrollY = Number(state.v28SheetScrollY) || 0;
+
+function v28IsMobileViewport() {
+  return document.body.classList.contains('v22-mobile-first') || isMobileSheetViewportV27();
+}
+function v28ViewportState() {
+  const vv = window.visualViewport;
+  const height = Math.max(320, Math.round(vv?.height || window.innerHeight || document.documentElement.clientHeight || 0));
+  const offsetTop = Math.max(0, Math.round(vv?.offsetTop || 0));
+  const inner = Math.max(height, Math.round(window.innerHeight || height));
+  const keyboardInset = Math.max(0, inner - height - offsetTop);
+  return { height, offsetTop, keyboardInset };
+}
+function syncV28ViewportVars() {
+  const { height, offsetTop, keyboardInset } = v28ViewportState();
+  document.documentElement.style.setProperty('--v28-vv-height', `${height}px`);
+  document.documentElement.style.setProperty('--v28-sheet-max-height', `${Math.max(360, height - Math.max(6, offsetTop))}px`);
+  document.documentElement.style.setProperty('--v28-keyboard-inset', `${keyboardInset}px`);
+  document.documentElement.style.setProperty('--v28-vv-offset-top', `${offsetTop}px`);
+}
+function v28SheetBody() {
+  return document.getElementById('v22SheetBody');
+}
+function v28LockPageScroll() {
+  if (!v28IsMobileViewport()) return;
+  if (document.body.dataset.v28ScrollLocked === '1') return;
+  const y = Math.max(0, window.scrollY || window.pageYOffset || 0);
+  state.v28SheetScrollY = y;
+  document.body.dataset.v28ScrollLocked = '1';
+  document.body.style.position = 'fixed';
+  document.body.style.top = `-${y}px`;
+  document.body.style.left = '0';
+  document.body.style.right = '0';
+  document.body.style.width = '100%';
+  document.body.style.overflow = 'hidden';
+}
+function v28UnlockPageScroll() {
+  if (document.body.dataset.v28ScrollLocked !== '1') return;
+  const y = Math.max(0, Number(state.v28SheetScrollY) || 0);
+  delete document.body.dataset.v28ScrollLocked;
+  document.body.style.position = '';
+  document.body.style.top = '';
+  document.body.style.left = '';
+  document.body.style.right = '';
+  document.body.style.width = '';
+  document.body.style.overflow = '';
+  requestAnimationFrame(() => {
+    try { window.scrollTo({ top: y, behavior: 'auto' }); }
+    catch { try { window.scrollTo(0, y); } catch {} }
+  });
+}
+function v28EnsureFieldVisible(node = document.activeElement) {
+  if (!document.body.classList.contains('v22-sheet-open')) return;
+  const sheetBody = v28SheetBody();
+  if (!sheetBody || !node || !sheetBody.contains(node)) return;
+  const tag = String(node.tagName || '');
+  if (!/^(INPUT|TEXTAREA|SELECT)$/i.test(tag) && !node.isContentEditable) return;
+  const { height, keyboardInset } = v28ViewportState();
+  const bodyRect = sheetBody.getBoundingClientRect();
+  const nodeRect = node.getBoundingClientRect();
+  const visibleTop = bodyRect.top + 10;
+  const visibleBottom = Math.min(bodyRect.bottom, height - Math.min(24, keyboardInset * 0.5) - 18);
+  if (nodeRect.top < visibleTop) {
+    sheetBody.scrollTop = Math.max(0, Math.round(sheetBody.scrollTop - (visibleTop - nodeRect.top) - 10));
+  } else if (nodeRect.bottom > visibleBottom) {
+    sheetBody.scrollTop = Math.round(sheetBody.scrollTop + (nodeRect.bottom - visibleBottom) + 14);
+  }
+}
+function bindV28ViewportGuards() {
+  if (document.body.dataset.v28ViewportBound) return;
+  document.body.dataset.v28ViewportBound = '1';
+  const queue = () => requestAnimationFrame(() => {
+    syncV28ViewportVars();
+    v28EnsureFieldVisible();
+  });
+  window.addEventListener('resize', queue, { passive: true });
+  window.visualViewport?.addEventListener('resize', queue);
+  window.visualViewport?.addEventListener('scroll', queue);
+  document.addEventListener('focusin', (event) => {
+    if (!document.body.classList.contains('v22-sheet-open')) return;
+    requestAnimationFrame(() => v28EnsureFieldVisible(event.target));
+  }, true);
+  document.addEventListener('click', (event) => {
+    const input = event.target?.closest?.('#v22SheetBody input, #v22SheetBody textarea, #v22SheetBody select');
+    if (!input) return;
+    setTimeout(() => v28EnsureFieldVisible(input), 36);
+  }, true);
+  syncV28ViewportVars();
+}
+bindV28ViewportGuards();
+
+const legacyOpenV22SheetV28 = openV22Sheet;
+openV22Sheet = function openV22SheetV28(key, options = {}) {
+  const nextOptions = { ...options };
+  if (v28IsMobileViewport()) nextOptions.focusSelector = '';
+  syncV28ViewportVars();
+  const result = legacyOpenV22SheetV28(key, nextOptions);
+  requestAnimationFrame(() => {
+    syncV28ViewportVars();
+    v28LockPageScroll();
+    if (nextOptions.scrollTo) {
+      const node = document.querySelector(nextOptions.scrollTo);
+      if (node) v28EnsureFieldVisible(node);
+    }
+  });
+  return result;
+};
+
+const legacyCloseV22SheetV28 = closeV22Sheet;
+closeV22Sheet = function closeV22SheetV28() {
+  const result = legacyCloseV22SheetV28();
+  v28UnlockPageScroll();
+  syncV28ViewportVars();
+  return result;
+};
+
+function foodDraftKeyV28(food) {
+  try { return favoriteKeyFromFood(food) || String(food?.c || food?.n || food?.name || ''); }
+  catch { return String(food?.c || food?.n || food?.name || ''); }
+}
+function snapshotFoodDraftGramsV28() {
+  const host = DOM.foodSearchResults;
+  if (!host) return;
+  host.querySelectorAll('[data-grams-input]').forEach((input) => {
+    const idx = Number(input.dataset.gramsInput);
+    const food = state.lastResults?.[idx];
+    if (!food) return;
+    const key = foodDraftKeyV28(food);
+    const value = Number(input.value);
+    if (!key || !Number.isFinite(value) || value <= 0) return;
+    state.v28FoodDraftGrams[key] = clamp(value, 1, 5000);
+  });
+}
+function savedFoodGramV28(food) {
+  const key = foodDraftKeyV28(food);
+  const saved = key ? Number(state.v28FoodDraftGrams[key]) : NaN;
+  return clamp(Number.isFinite(saved) && saved > 0 ? saved : (food?._servingGram || 100), 1, 5000);
+}
+
+renderSearchItem = function renderSearchItemV28(food, idx) {
+  const defaultGram = savedFoodGramV28(food);
+  const displayName = preferredFoodName(food);
+  const original = preferredOriginalName(food);
+  const originalLine = original ? `<div class="food-origin">${escapeHtml(L('originalNameLabel'))} ${escapeHtml(original)}</div>` : '';
+  const reasonLine = food._matchReason ? `<div class="food-match-reason">${escapeHtml(searchV13Text('matchPrefix'))}${escapeHtml(food._matchReason)}</div>` : '';
+  const isFavorite = isFavoriteFood(food);
+  return `
+    <article class="food-card">
+      <div class="food-card-head">
+        <div class="food-title-wrap">
+          <h3 class="food-title">${escapeHtml(displayName)}</h3>
+          ${originalLine}
+          ${reasonLine}
+          ${foodMetaLine(food) ? `<div class="food-origin">${escapeHtml(foodMetaLine(food))}</div>` : ''}
+          ${renderFoodTagRow(food)}
+        </div>
+        <span class="top-pill subtle food-card-serving-pill">${escapeHtml(food._servingGram ? L('servingApprox', { gram: round0(food._servingGram) }) : L('baseline100g'))}</span>
+      </div>
+      <div class="food-meta">
+        <span>${escapeHtml(L('manualBasis100g'))} ${escapeHtml(metric(food._norm.kcal, 'kcal'))}</span>
+        <span>${escapeHtml(nutrientName('protein'))} ${escapeHtml(metric(food._norm.protein, 'protein'))}</span>
+        <span>${escapeHtml(nutrientName('carbs'))} ${escapeHtml(metric(food._norm.carbs, 'carbs'))}</span>
+        <span>${escapeHtml(nutrientName('fat'))} ${escapeHtml(metric(food._norm.fat, 'fat'))}</span>
+        <span>${escapeHtml(nutrientName('sodium'))} ${escapeHtml(metric(food._norm.sodium, 'sodium'))}</span>
+      </div>
+      <div class="food-actions">
+        <input type="number" min="1" max="5000" step="1" value="${defaultGram}" data-grams-input="${idx}">
+        <button class="primary-btn" type="button" data-add-food="${idx}">${escapeHtml(L('addByGramsBtn'))}</button>
+        ${food._servingGram ? `<button class="ghost-btn" type="button" data-add-serving="${idx}">${escapeHtml(L('addServingBtn'))}</button>` : ''}
+        <button class="ghost-btn" type="button" data-toggle-favorite="${idx}">${escapeHtml(isFavorite ? L('unsetFavoriteBtn') : L('setFavoriteBtn'))}</button>
+        <button class="ghost-btn" type="button" data-combo-add="${idx}">${escapeHtml(L('comboAddBtn'))}</button>
+      </div>
+      <div class="quick-grams-row">
+        <button class="ghost-btn" type="button" data-add-quick="${idx}" data-quick-grams="50">+50 g</button>
+        <button class="ghost-btn" type="button" data-add-quick="${idx}" data-quick-grams="100">+100 g</button>
+        <button class="ghost-btn" type="button" data-add-quick="${idx}" data-quick-grams="250">+250 g</button>
+      </div>
+    </article>
+  `;
+};
+
+const legacyCommitV22SearchResultsV28 = commitV22SearchResultsV24;
+commitV22SearchResultsV24 = function commitV22SearchResultsV28(raw, active, fallback, primaryResults, secondaryResults) {
+  snapshotFoodDraftGramsV28();
+  return legacyCommitV22SearchResultsV28(raw, active, fallback, primaryResults, secondaryResults);
+};
+
+const legacyDoSearchV28b = doSearch;
+doSearch = async function doSearchV28b(query) {
+  const raw = String(query || '').trim();
+  if (DOM.foodSearchInput?.dataset.imeComposing === '1' && raw === String(DOM.foodSearchInput.value || '').trim()) return state.lastResults || [];
+  snapshotFoodDraftGramsV28();
+  return legacyDoSearchV28b(raw);
+};
+
+function bindFoodDraftAndImeV28() {
+  if (document.body.dataset.v28FoodImeBound) return;
+  document.body.dataset.v28FoodImeBound = '1';
+  DOM.foodSearchResults?.addEventListener('input', (event) => {
+    const input = closestFromEventV27(event, '[data-grams-input]');
+    if (!input) return;
+    const idx = Number(input.dataset.gramsInput);
+    const food = state.lastResults?.[idx];
+    if (!food) return;
+    const value = Number(input.value);
+    if (!Number.isFinite(value) || value <= 0) return;
+    state.v28FoodDraftGrams[foodDraftKeyV28(food)] = clamp(value, 1, 5000);
+  }, true);
+  const searchInput = DOM.foodSearchInput;
+  if (searchInput && !searchInput.dataset.v28ImeBound) {
+    searchInput.dataset.v28ImeBound = '1';
+    let composeTimer = 0;
+    const runSearch = (immediate = false) => {
+      clearTimeout(composeTimer);
+      if (searchInput.dataset.imeComposing === '1') return;
+      if (immediate) doSearch(String(searchInput.value || '').trim());
+      else composeTimer = window.setTimeout(() => doSearch(String(searchInput.value || '').trim()), 110);
+    };
+    searchInput.addEventListener('compositionstart', () => {
+      searchInput.dataset.imeComposing = '1';
+      clearTimeout(composeTimer);
+    }, true);
+    searchInput.addEventListener('compositionupdate', () => {
+      searchInput.dataset.imeComposing = '1';
+      clearTimeout(composeTimer);
+    }, true);
+    searchInput.addEventListener('compositionend', () => {
+      delete searchInput.dataset.imeComposing;
+      runSearch(true);
+    }, true);
+    searchInput.addEventListener('input', (event) => {
+      event.stopImmediatePropagation();
+      if (event.isComposing || searchInput.dataset.imeComposing === '1') return;
+      runSearch(false);
+    }, true);
+    searchInput.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      clearTimeout(composeTimer);
+      if (searchInput.dataset.imeComposing === '1') return;
+      doSearch(String(searchInput.value || '').trim());
+    }, true);
+  }
+}
+if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', bindFoodDraftAndImeV28, { once: true });
+else setTimeout(bindFoodDraftAndImeV28, 0);
+
+function renderNutritionLinkedUiV28() {
+  renderOverview();
+  renderCompactNutrients();
+  renderDayLog();
+  renderRecentList();
+  renderLiveChips();
+  renderSuggestions();
+  renderPanelSummaries();
+  renderQuestStrip();
+  renderExploreCards();
+  renderQuickSheet();
+  refreshV22HomeMeta();
+}
+function addWaterEntryV28(amountMl) {
+  const safeAmount = clamp(Number(amountMl) || 0, 50, 5000);
+  getDayLog(state.date).items.unshift({
+    type: 'water',
+    amountMl: safeAmount,
+    label: `${safeAmount} mL`,
+    createdAt: new Date().toISOString(),
+  });
+  saveLogs();
+  markExploreDirty();
+  renderNutritionLinkedUiV28();
+  flashUpdate();
+  showToast(`${safeAmount} mL`);
+}
+function addClonedLogItemV28(item) {
+  if (!item) return;
+  const clone = JSON.parse(JSON.stringify(item));
+  clone.createdAt = new Date().toISOString();
+  getDayLog(state.date).items.unshift(clone);
+  saveLogs();
+  markExploreDirty();
+  renderNutritionLinkedUiV28();
+  flashUpdate();
+  showToast(clone.type === 'water' ? L('water') : preferredFoodName(clone));
+}
+addFoodLog = function addFoodLogV28(food, grams, label = L('dbSource')) {
+  const amount = clamp(Number(grams) || 0, 1, 5000);
+  getDayLog(state.date).items.unshift({
+    type: 'food',
+    source: food?.source || 'db',
+    sourceLabel: label,
+    code: food.c || '',
+    labels: { ...(food?._labels || food?.labels || buildFoodLabels(food)) },
+    name: preferredFoodName(food),
+    originalName: food._labels?.original || food._originalName || food.n || '',
+    amountText: `${round0(amount)} g`,
+    nutrients: scaleNutrients(food._norm, amount),
+    knownIds: Array.isArray(food._presentIds) ? [...food._presentIds] : Object.keys(food._norm || {}),
+    createdAt: new Date().toISOString(),
+  });
+  state.v28FoodDraftGrams[foodDraftKeyV28(food)] = amount;
+  saveLogs();
+  markExploreDirty();
+  renderNutritionLinkedUiV28();
+  flashUpdate();
+  showToast(preferredFoodName(food));
+};
+
+function bindV28FastActionInterceptors() {
+  if (document.body.dataset.v28FastActionBound) return;
+  document.body.dataset.v28FastActionBound = '1';
+  DOM.quickAddWater?.addEventListener('click', (event) => {
+    const btn = closestFromEventV27(event, '[data-water-add]');
+    if (!btn) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    addWaterEntryV28(Number(btn.dataset.waterAdd));
+  }, true);
+  document.querySelector('.mobile-dock')?.addEventListener('click', (event) => {
+    const btn = closestFromEventV27(event, '[data-water-add]');
+    if (!btn) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    addWaterEntryV28(Number(btn.dataset.waterAdd));
+  }, true);
+  DOM.recentList?.addEventListener('click', (event) => {
+    const btn = closestFromEventV27(event, '[data-recent-idx]');
+    if (!btn) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const item = state.recentItems?.[Number(btn.dataset.recentIdx)];
+    addClonedLogItemV28(item);
+  }, true);
+  DOM.sheetWaterRow?.addEventListener('click', (event) => {
+    const btn = closestFromEventV27(event, '[data-sheet-water-add]');
+    if (!btn) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    addWaterEntryV28(Number(btn.dataset.sheetWaterAdd));
+  }, true);
+  DOM.quickSheetRecentList?.addEventListener('click', (event) => {
+    const btn = closestFromEventV27(event, '[data-sheet-recent-idx]');
+    if (!btn) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const item = collectRecentItems(6)[Number(btn.dataset.sheetRecentIdx)];
+    addClonedLogItemV28(item);
+    closeQuickSheet();
+  }, true);
+  DOM.quickSheetFavoriteList?.addEventListener('click', (event) => {
+    const btn = closestFromEventV27(event, '[data-sheet-favorite-idx]');
+    if (!btn) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const favorite = state.favorites[Number(btn.dataset.sheetFavoriteIdx)];
+    if (!favorite) return;
+    addFoodLog(hydrateFavoriteFood(favorite), favorite.servingGram || 100, L('favoriteSource'));
+    closeQuickSheet();
+  }, true);
+  DOM.questStrip?.addEventListener('click', (event) => {
+    const btn = closestFromEventV27(event, '[data-quest-action="water-350"]');
+    if (!btn) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    addWaterEntryV28(350);
+  }, true);
+}
+if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', bindV28FastActionInterceptors, { once: true });
+else setTimeout(bindV28FastActionInterceptors, 0);
+
+function v28MetricTone(ratio) {
+  return ratio >= 1 ? 'is-good' : ratio >= 0.72 ? 'is-mid' : 'is-need';
+}
+renderV26HomeProgress = function renderV26HomeProgressV28() {
+  const host = document.getElementById('v26HomeProgress');
+  if (!host) return;
+  const snapshot = realtimeNutritionSnapshotV24();
+  const targets = state.calc?.targets || {};
+  const score = computeBalanceScore(snapshot, targets);
+  const topGap = getTopGaps(snapshot, targets, 1)[0];
+  const topRisk = getTopRisks(snapshot, targets, 1)[0];
+  const done = getDoneItems(snapshot, targets, 1)[0];
+  const items = [
+    { id: 'kcal', label: L('v22NutrientKcal') },
+    { id: 'protein', label: L('v22NutrientProtein') },
+    { id: 'fiber', label: L('v22NutrientFiber') },
+    { id: 'water', label: L('v22NutrientWater') },
+  ].map((item) => ({
+    ...item,
+    ...formatProgressStateV22(snapshot.totals?.[item.id], targets[item.id], item.id),
+  }));
+  const note = snapshot.previewSource === 'manual' ? L('v26HomePreviewFlag') : L('v26HomeProgressHint');
+  const summaryLine = topGap
+    ? `${nutrientName(topGap.id)} · ${L('needMore', { value: metric(topGap.delta, topGap.id) })}`
+    : topRisk
+      ? `${nutrientName(topRisk.id)} · ${L('riskTitle')}`
+      : done
+        ? `${nutrientName(done.id)} · ${L('doneTitle')}`
+        : note;
+  host.innerHTML = `
+    <div class="v28-home-progress-hero">
+      <div class="v26-home-progress-head">
+        <strong>${escapeHtml(L('foodRealtimeTitle'))}</strong>
+        <span>${escapeHtml(L('v26HomeTodayCount', { count: snapshot.totalFoodCount || 0 }))}</span>
+      </div>
+      <div class="v28-home-progress-summary">
+        <div class="v28-home-balance-pill">${escapeHtml(String(score))}</div>
+        <div class="v28-home-progress-copy-main">
+          <strong>${escapeHtml(summaryMessage(score, topGap, topRisk))}</strong>
+          <span>${escapeHtml(summaryLine)}</span>
+        </div>
+      </div>
+      <div class="v26-home-progress-grid v28-home-progress-grid">
+        ${items.map((item) => `
+          <button class="v26-home-progress-chip v28-home-progress-chip ${v28MetricTone(item.ratio)}" type="button" data-v28-nutrition-action="${item.ratio < 1 ? 'gap' : 'open-intake'}" data-nutrient-id="${escapeHtml(item.id)}">
+            <div class="v26-home-progress-ring" style="--fill:${escapeHtml(item.fill)}"></div>
+            <div class="v26-home-progress-copy">
+              <strong>${escapeHtml(item.label)}</strong>
+              <span>${escapeHtml(item.currentText)} / ${escapeHtml(item.targetText)}</span>
+              <small>${escapeHtml(item.stateText)}</small>
+            </div>
+          </button>`).join('')}
+      </div>
+      <div class="v28-home-next-grid">
+        ${topGap ? `<button class="v28-home-next-btn tone-gap" type="button" data-v28-nutrition-action="gap" data-nutrient-id="${escapeHtml(topGap.id)}"><strong>${escapeHtml(L('questStart'))}</strong><span>${escapeHtml(nutrientName(topGap.id))} · ${escapeHtml(L('needMore', { value: metric(topGap.delta, topGap.id) }))}</span></button>` : ''}
+        ${topRisk ? `<button class="v28-home-next-btn tone-risk" type="button" data-v28-nutrition-action="risk" data-nutrient-id="${escapeHtml(topRisk.id)}"><strong>${escapeHtml(L('riskTitle'))}</strong><span>${escapeHtml(nutrientName(topRisk.id))} · ${escapeHtml(metric(topRisk.delta, topRisk.id))}</span></button>` : ''}
+        <button class="v28-home-next-btn tone-water" type="button" data-v28-nutrition-action="water"><strong>${escapeHtml(L('questHydrate'))}</strong><span>+350 mL</span></button>
+      </div>
+      <div class="v26-home-progress-foot">${escapeHtml(note)}</div>
+    </div>`;
+};
+
+function bindV28HomeNutritionActions() {
+  if (document.body.dataset.v28HomeNutritionBound) return;
+  document.body.dataset.v28HomeNutritionBound = '1';
+  document.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-v28-nutrition-action]');
+    if (!btn) return;
+    const action = btn.dataset.v28NutritionAction;
+    if (action === 'water') {
+      event.preventDefault();
+      addWaterEntryV28(350);
+      return;
+    }
+    if (action === 'gap' || action === 'risk') {
+      event.preventDefault();
+      quickSearch(keywordForNutrient(btn.dataset.nutrientId || 'protein'));
+      return;
+    }
+    if (action === 'open-intake') {
+      event.preventDefault();
+      openV22Sheet('intake');
+    }
+  }, true);
+}
+bindV28HomeNutritionActions();
+
+function applyMusicCatalogUpgradeV28() {
+  if (window.__haochijiaMusicCatalogV28) return;
+  window.__haochijiaMusicCatalogV28 = true;
+  const order = ['deepHouse', 'synthwave', 'ambientTechno', 'ukGarage', 'drumBass', 'progressiveTrance', 'chillstep', 'minimalTechno', 'acidRave'];
+  const mapped = order.map((id) => MUSIC_GENRES.find((item) => item.id === id)).filter(Boolean);
+  if (mapped.length === MUSIC_GENRES.length) MUSIC_GENRES.splice(0, MUSIC_GENRES.length, ...mapped);
+  MUSIC_STYLE_PRESETS_V24.splice(0, MUSIC_STYLE_PRESETS_V24.length,
+    { id: 'warmhouse', labels: { zh: '暖 House', en: 'Warm House', es: 'Warm House' }, note: { zh: '稳、暖、适合日常记录。', en: 'Warm and steady for daily logging.', es: 'Cálido y estable para registrar.' }, genreId: 'deepHouse', energy: 3, intensity: 3, pulse: 3, bass: 3, brightness: 3, tempo: 3, variation: 2 },
+    { id: 'neonlift', labels: { zh: '霓虹旋律', en: 'Neon Lift', es: 'Neon Lift' }, note: { zh: '更亮、更旋律、明显不是 techno。', en: 'Brighter and more melodic.', es: 'Más brillante y melódico.' }, genreId: 'synthwave', energy: 3, intensity: 3, pulse: 2, bass: 3, brightness: 5, tempo: 2, variation: 3 },
+    { id: 'airfloat', labels: { zh: '空气感', en: 'Air Float', es: 'Air Float' }, note: { zh: '更松更飘，适合慢慢逛。', en: 'Airy and loose for slow browsing.', es: 'Ligero y flotante para explorar.' }, genreId: 'ambientTechno', energy: 2, intensity: 2, pulse: 2, bass: 2, brightness: 2, tempo: 1, variation: 2 },
+    { id: 'brokenbounce', labels: { zh: '碎拍弹性', en: 'Broken Bounce', es: 'Broken Bounce' }, note: { zh: '更会摆、更有弹。', en: 'More bounce and broken-groove feel.', es: 'Más rebote y groove roto.' }, genreId: 'ukGarage', energy: 4, intensity: 3, pulse: 5, bass: 4, brightness: 3, tempo: 4, variation: 4 },
+    { id: 'melodicdrive', labels: { zh: '旋律推进', en: 'Melodic Drive', es: 'Melodic Drive' }, note: { zh: '更亮更抬头，推进感明显。', en: 'Clear melodic lift and forward motion.', es: 'Impulso melódico claro.' }, genreId: 'progressiveTrance', energy: 4, intensity: 3, pulse: 3, bass: 3, brightness: 5, tempo: 4, variation: 3 },
+    { id: 'rushdnb', labels: { zh: 'DnB 冲刺', en: 'DnB Rush', es: 'DnB Rush' }, note: { zh: '最快最碎，适合短时提神。', en: 'Fast and fractured for a quick lift.', es: 'Rápido y roto para activar.' }, genreId: 'drumBass', energy: 5, intensity: 4, pulse: 5, bass: 5, brightness: 4, tempo: 5, variation: 4 }
+  );
+}
+function isLegacyAmbientDefaultV28(prefs) {
+  return prefs?.genreId === 'ambientTechno'
+    && Number(prefs.volume) === 72
+    && Number(prefs.energy) === 4
+    && Number(prefs.intensity) === 3
+    && Number(prefs.pulse) === 3
+    && Number(prefs.bass) === 4
+    && Number(prefs.brightness) === 3
+    && Number(prefs.tempo) === 3
+    && Number(prefs.variation) === 3
+    && prefs.autoMorph === true;
+}
+function applyMusicDefaultsV28() {
+  applyMusicCatalogUpgradeV28();
+  let hasStored = false;
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORAGE.music) || 'null');
+    hasStored = Boolean(raw && typeof raw === 'object' && Object.keys(raw).length);
+  } catch {}
+  if (!hasStored || isLegacyAmbientDefaultV28(state.musicPrefs)) {
+    state.musicPrefs = {
+      ...(state.musicPrefs || {}),
+      genreId: 'deepHouse',
+      volume: 70,
+      energy: 3,
+      intensity: 3,
+      pulse: 3,
+      bass: 3,
+      brightness: 3,
+      tempo: 3,
+      variation: 2,
+      autoMorph: false,
+      persistent: true,
+      styleId: 'warmhouse',
+    };
+    saveMusicPrefs();
+  } else if (state.musicPrefs) {
+    state.musicPrefs.autoMorph = Boolean(state.musicPrefs.autoMorph && !isLegacyAmbientDefaultV28(state.musicPrefs));
+  }
+}
+applyMusicDefaultsV28();

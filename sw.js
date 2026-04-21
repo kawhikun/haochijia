@@ -1,18 +1,23 @@
-const CACHE_NAME = 'haochijia-v26-focus-fix-20260418-r1';
+const CACHE_NAME = 'haochijia-v30-core-upgrade-20260421';
 const CORE = [
   './',
   './index.html',
   './404.html',
   './assets/styles.css',
+  './assets/core-upgrade-v30.css',
   './assets/app.js',
   './assets/body-module.js',
   './assets/i18n.js',
   './assets/food-label-upgrade.js',
   './assets/music.js',
+  './assets/core-upgrade-v30.js',
+  './assets/music-lab.js',
+  './assets/music-lab.css',
   './assets/nutrition-refs.js',
   './assets/icon-192.png',
   './assets/icon-512.png',
   './manifest.webmanifest',
+  './music-lab.html',
   './data/foods-regions.meta.json'
 ];
 

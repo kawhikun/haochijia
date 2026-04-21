@@ -745,10 +745,29 @@ function applyBodyTexts() {
   if (headerBodyBtn) headerBodyBtn.textContent = currentLang() === 'zh' ? '记身体' : currentLang() === 'es' ? 'Cuerpo' : 'Body log';
 }
 
+function bodyScrollBehaviorV27() {
+  return document.body.classList.contains('v22-mobile-first') ? 'auto' : 'smooth';
+}
+function scrollBodyNodeV27(node) {
+  if (!node) return;
+  const sheetBody = node.closest('.v22-sheet-body');
+  if (sheetBody && typeof node.offsetTop === 'number') {
+    try {
+      sheetBody.scrollTo({ top: Math.max(0, node.offsetTop - 8), behavior: bodyScrollBehaviorV27() });
+      return;
+    } catch {}
+  }
+  try {
+    node.scrollIntoView({ behavior: bodyScrollBehaviorV27(), block: 'start' });
+  } catch {}
+}
 function scrollToBodyPanel(focusFirst) {
-  bodyState.nodes.panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  if (focusFirst) {
-    setTimeout(() => bodyState.nodes.form?.querySelector('[data-body-field="weightKg"]')?.focus(), 220);
+  scrollBodyNodeV27(bodyState.nodes.panel);
+  if (focusFirst && !document.body.classList.contains('v22-mobile-first')) {
+    setTimeout(() => {
+      try { bodyState.nodes.form?.querySelector('[data-body-field="weightKg"]')?.focus({ preventScroll: true }); }
+      catch { try { bodyState.nodes.form?.querySelector('[data-body-field="weightKg"]')?.focus(); } catch {} }
+    }, 220);
   }
 }
 
@@ -2117,7 +2136,7 @@ onHistoryListClick = function onHistoryListClickV13(event) {
     bodyState.timelineIndex = clampBodyTimeline(idx);
     bodyState.focusField = topBodyDeltas(resolveBodyRecord(bodyState.history, idx), resolveBodyRecord(bodyState.history, idx + 1), 1)[0]?.id || '';
     renderBodyModule();
-    bodyState.nodes.hero?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    scrollBodyNodeV27(bodyState.nodes.hero);
     return;
   }
   fillBodyForm(record);
@@ -2952,8 +2971,13 @@ initBodyModule = function initBodyModuleV15() {
   window.__haochijiaBodyReady = true;
   window.__haochijiaOpenBodyPanel = (focus = true) => {
     setBodyPanelState(true);
-    bodyState.nodes.panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    if (focus) setTimeout(() => bodyState.nodes.form?.querySelector('[data-body-field="weightKg"]')?.focus(), 220);
+    scrollBodyNodeV27(bodyState.nodes.panel);
+    if (focus && !document.body.classList.contains('v22-mobile-first')) {
+      setTimeout(() => {
+        try { bodyState.nodes.form?.querySelector('[data-body-field="weightKg"]')?.focus({ preventScroll: true }); }
+        catch { try { bodyState.nodes.form?.querySelector('[data-body-field="weightKg"]')?.focus(); } catch {} }
+      }, 220);
+    }
   };
   window.__haochijiaToggleBodyPanel = (next) => setBodyPanelState(Boolean(next));
   window.dispatchEvent(new CustomEvent('haochijia:body-ready'));
@@ -3175,8 +3199,10 @@ const legacySaveBodyRecordV20 = saveBodyRecord;
 saveBodyRecord = function saveBodyRecordV20() {
   legacySaveBodyRecordV20();
   if ((bodyState.history || []).length) {
-    setBodyPanelState(false);
     setBodyHubOpenV20(false);
+    bodyState.panelOpen = true;
+    bodyState.nodes.panel?.classList.remove('collapsed');
+    try { saveBodyPanelOpenV20(); } catch {}
   }
 };
 setBodyPanelState = function setBodyPanelStateV20(isOpen, persist = true) {
@@ -3305,3 +3331,449 @@ window.addEventListener('haochijia:body-ready', () => {
   refreshBodyActionHubCopyV20();
   emitBodySyncV22({ ready: true });
 });
+
+
+/* ===== v28 body smoothing / mobile render profile ===== */
+function bodyPerfProfileV28() {
+  const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '') || Boolean(window.matchMedia?.('(max-width: 820px)').matches);
+  const lowMem = Number(navigator.deviceMemory || 0) > 0 && Number(navigator.deviceMemory) <= 4;
+  const lowCpu = Number(navigator.hardwareConcurrency || 0) > 0 && Number(navigator.hardwareConcurrency) <= 6;
+  const reduced = mobile || lowMem || lowCpu;
+  return {
+    mobile,
+    reduced,
+    dpr: reduced ? 1.18 : 1.55,
+    shadows: !reduced,
+    radialSegments: reduced ? 26 : 36,
+    capsuleCapSegments: reduced ? 4 : 6,
+    capsuleRadialSegments: reduced ? 12 : 18,
+  };
+}
+function bodySoftMixV28(base, target, weight = 0.82) {
+  const a = Number(base);
+  const b = Number(target);
+  if (!Number.isFinite(a)) return b;
+  if (!Number.isFinite(b)) return a;
+  return a + (b - a) * weight;
+}
+scrollBodyNodeV27 = function scrollBodyNodeV28(node) {
+  if (!node) return;
+  const sheetBody = node.closest('.v22-sheet-body') || document.getElementById('v22SheetBody');
+  if (sheetBody && sheetBody.contains(node)) {
+    const containerRect = sheetBody.getBoundingClientRect();
+    const nodeRect = node.getBoundingClientRect();
+    const delta = nodeRect.top - containerRect.top + sheetBody.scrollTop - 10;
+    try { sheetBody.scrollTo({ top: Math.max(0, Math.round(delta)), behavior: 'auto' }); }
+    catch { sheetBody.scrollTop = Math.max(0, Math.round(delta)); }
+    return;
+  }
+  if (document.body.classList.contains('v22-mobile-first') || document.body.classList.contains('v22-sheet-open')) return;
+  const top = Math.max(0, Math.round((window.pageYOffset || 0) + node.getBoundingClientRect().top - 12));
+  try { window.scrollTo({ top, behavior: bodyScrollBehaviorV27() }); }
+  catch { try { window.scrollTo(0, top); } catch {} }
+};
+scrollToBodyPanel = function scrollToBodyPanelV28(focusFirst) {
+  try { setBodyPanelState(true); } catch {}
+  scrollBodyNodeV27(bodyState.nodes.panel);
+  if (!focusFirst || document.body.classList.contains('v22-mobile-first') || document.body.classList.contains('v22-sheet-open')) return;
+  setTimeout(() => {
+    const input = bodyState.nodes.form?.querySelector('[data-body-field="weightKg"]');
+    try { input?.focus({ preventScroll: true }); }
+    catch { try { input?.focus(); } catch {} }
+  }, 120);
+};
+window.addEventListener('haochijia:body-ready', () => {
+  window.__haochijiaOpenBodyPanel = (focus = true) => {
+    try { setBodyPanelState(true); } catch {}
+    scrollBodyNodeV27(bodyState.nodes.panel);
+    if (focus && !document.body.classList.contains('v22-mobile-first') && !document.body.classList.contains('v22-sheet-open')) {
+      setTimeout(() => {
+        const input = bodyState.nodes.form?.querySelector('[data-body-field="weightKg"]');
+        try { input?.focus({ preventScroll: true }); }
+        catch { try { input?.focus(); } catch {} }
+      }, 120);
+    }
+  };
+});
+
+const legacyFigureProfileV28 = figureProfile;
+figureProfile = function figureProfileV28(record, angle, width, height) {
+  const base = withBodyDefaults(record);
+  const neutral = withBodyDefaults({ heightCm: base?.heightCm, weightKg: base?.weightKg, bodyFat: base?.bodyFat, stageTag: base?.stageTag });
+  const blendMeasure = (id, weight = 0.8, minScale = 0.78, maxScale = 1.24) => {
+    const raw = Number(base?.[id]);
+    const fallback = Number(neutral?.[id]);
+    const source = Number.isFinite(raw) && raw > 0 ? raw : fallback;
+    if (!Number.isFinite(fallback) || fallback <= 0) return source;
+    const mixed = bodySoftMixV28(fallback, source, weight);
+    return clampNum(mixed, fallback * minScale, fallback * maxScale);
+  };
+  const softened = {
+    ...base,
+    shoulder: blendMeasure('shoulder', 0.78, 0.86, 1.16),
+    chest: blendMeasure('chest', 0.82),
+    waist: blendMeasure('waist', 0.74, 0.76, 1.18),
+    abdomen: blendMeasure('abdomen', 0.72, 0.76, 1.22),
+    hip: blendMeasure('hip', 0.78, 0.8, 1.2),
+    upperArmL: blendMeasure('upperArmL', 0.74, 0.8, 1.18),
+    upperArmR: blendMeasure('upperArmR', 0.74, 0.8, 1.18),
+    forearmL: blendMeasure('forearmL', 0.74, 0.82, 1.18),
+    forearmR: blendMeasure('forearmR', 0.74, 0.82, 1.18),
+    thighL: blendMeasure('thighL', 0.78, 0.82, 1.22),
+    thighR: blendMeasure('thighR', 0.78, 0.82, 1.22),
+    calfL: blendMeasure('calfL', 0.78, 0.82, 1.2),
+    calfR: blendMeasure('calfR', 0.78, 0.82, 1.2),
+    ankleL: blendMeasure('ankleL', 0.78, 0.82, 1.18),
+    ankleR: blendMeasure('ankleR', 0.78, 0.82, 1.18),
+    neck: blendMeasure('neck', 0.8, 0.84, 1.14),
+  };
+  return legacyFigureProfileV28(softened, angle, width, height);
+};
+
+drawBodyScene = function drawBodySceneV28(ctx, canvas, snapshot, angle, overlay) {
+  const perf = bodyPerfProfileV28();
+  const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, perf.dpr));
+  const width = canvas.clientWidth || canvas.width;
+  const height = canvas.clientHeight || canvas.height;
+  if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  drawSceneBackdrop(ctx, width, height);
+  if (!snapshot?.current) return;
+  const profile = figureProfile(snapshot.current, angle, width, height);
+  const previousProfile = snapshot?.previous ? figureProfile(snapshot.previous, angle, width, height) : null;
+  if (overlay && previousProfile) drawGhostFigure(ctx, previousProfile, width, height);
+  drawCurrentFigure(ctx, profile, snapshot, width, height);
+};
+
+makeCapsuleMesh = function makeCapsuleMeshV28(THREE, radius, length, material, ghost) {
+  const perf = bodyPerfProfileV28();
+  const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(Math.max(0.03, radius), Math.max(0.08, length), perf.capsuleCapSegments, perf.capsuleRadialSegments), material);
+  mesh.castShadow = perf.shadows && !ghost;
+  mesh.receiveShadow = perf.shadows && !ghost;
+  return mesh;
+};
+buildTorsoSegmentMesh = function buildTorsoSegmentMeshV28(THREE, rings, material) {
+  const geometry = buildEllipticalStripGeometry(THREE, rings, bodyPerfProfileV28().radialSegments);
+  return new THREE.Mesh(geometry, material);
+};
+createBodyMaterial = function createBodyMaterialV28(THREE, ghost, delta) {
+  const perf = bodyPerfProfileV28();
+  if (ghost) {
+    return {
+      material: new THREE.MeshPhysicalMaterial({
+        color: 0xcad7f4,
+        transparent: true,
+        opacity: perf.reduced ? 0.12 : 0.16,
+        roughness: 0.82,
+        metalness: 0.01,
+        clearcoat: 0.06,
+        side: THREE.DoubleSide,
+      }),
+      baseIntensity: 0,
+    };
+  }
+  const heat = heatPropsForDelta(delta);
+  return {
+    material: new THREE.MeshPhysicalMaterial({
+      color: heat.color,
+      emissive: heat.emissive,
+      emissiveIntensity: perf.reduced ? heat.emissiveIntensity * 0.75 : heat.emissiveIntensity,
+      roughness: perf.reduced ? 0.56 : 0.48,
+      metalness: 0.01,
+      clearcoat: perf.reduced ? 0.18 : 0.3,
+      clearcoatRoughness: perf.reduced ? 0.44 : 0.36,
+      transparent: heat.opacity < 1,
+      opacity: heat.opacity,
+      side: THREE.DoubleSide,
+    }),
+    baseIntensity: perf.reduced ? heat.emissiveIntensity * 0.75 : heat.emissiveIntensity,
+  };
+};
+
+const legacyBuildBodyMeshDimsV28 = buildBodyMeshDims;
+buildBodyMeshDims = function buildBodyMeshDimsV28(record) {
+  if (!record) return null;
+  const base = withBodyDefaults(record);
+  const neutral = withBodyDefaults({ heightCm: base.heightCm, weightKg: base.weightKg, bodyFat: base.bodyFat, stageTag: base.stageTag });
+  const soften = (id, weight = 0.8, minScale = 0.78, maxScale = 1.24) => {
+    const raw = Number(base[id]);
+    const fallback = Number(neutral[id]);
+    const source = Number.isFinite(raw) && raw > 0 ? raw : fallback;
+    if (!Number.isFinite(fallback) || fallback <= 0) return source;
+    const mixed = bodySoftMixV28(fallback, source, weight);
+    return clampNum(mixed, fallback * minScale, fallback * maxScale);
+  };
+  const armAvg = averageOf(base.upperArmL, base.upperArmR) || averageOf(neutral.upperArmL, neutral.upperArmR) || 28;
+  const foreAvg = averageOf(base.forearmL, base.forearmR) || averageOf(neutral.forearmL, neutral.forearmR) || 24;
+  const thighAvg = averageOf(base.thighL, base.thighR) || averageOf(neutral.thighL, neutral.thighR) || 54;
+  const calfAvg = averageOf(base.calfL, base.calfR) || averageOf(neutral.calfL, neutral.calfR) || 36;
+  const shaped = {
+    ...base,
+    chest: soften('chest', 0.82),
+    underbust: bodySoftMixV28(neutral.chest * 0.92, Number(base.underbust || base.chest * 0.92), 0.8),
+    waist: soften('waist', 0.74, 0.76, 1.18),
+    abdomen: soften('abdomen', 0.72, 0.76, 1.22),
+    hip: soften('hip', 0.78, 0.8, 1.2),
+    shoulder: soften('shoulder', 0.78, 0.86, 1.16),
+    neck: soften('neck', 0.8, 0.84, 1.14),
+    upperArmL: bodySoftMixV28(neutral.upperArmL, armAvg, 0.76),
+    upperArmR: bodySoftMixV28(neutral.upperArmR, armAvg, 0.76),
+    forearmL: bodySoftMixV28(neutral.forearmL, foreAvg, 0.76),
+    forearmR: bodySoftMixV28(neutral.forearmR, foreAvg, 0.76),
+    thighL: bodySoftMixV28(neutral.thighL, thighAvg, 0.8),
+    thighR: bodySoftMixV28(neutral.thighR, thighAvg, 0.8),
+    calfL: bodySoftMixV28(neutral.calfL, calfAvg, 0.8),
+    calfR: bodySoftMixV28(neutral.calfR, calfAvg, 0.8),
+  };
+  const dims = legacyBuildBodyMeshDimsV28(shaped);
+  const neutralDims = legacyBuildBodyMeshDimsV28(neutral);
+  if (!dims || !neutralDims) return dims;
+  const mixValue = (fallback, current, weight = 0.82, minScale = 0.82, maxScale = 1.18) => {
+    const mixed = bodySoftMixV28(fallback, current, weight);
+    return clampNum(mixed, fallback * minScale, fallback * maxScale);
+  };
+  dims.headRadius = mixValue(neutralDims.headRadius, dims.headRadius, 0.92, 0.9, 1.08);
+  dims.neck = {
+    x: mixValue(neutralDims.neck.x, dims.neck.x, 0.88, 0.86, 1.12),
+    z: mixValue(neutralDims.neck.z, dims.neck.z, 0.88, 0.86, 1.12),
+  };
+  dims.torsoRings = dims.torsoRings.map((ring, index) => {
+    const fallback = neutralDims.torsoRings[index] || ring;
+    const xWeight = index === 4 ? 0.74 : index === 5 ? 0.72 : 0.82;
+    const zWeight = index === 5 ? 0.7 : 0.82;
+    return {
+      ...ring,
+      x: mixValue(fallback.x, ring.x, xWeight),
+      z: mixValue(fallback.z, ring.z, zWeight),
+    };
+  });
+  const correctedUpperArm = clampNum(armAvg * 0.00236, 0.05, 0.112);
+  const correctedForearm = clampNum(foreAvg * 0.00216, 0.042, 0.094);
+  const correctedThigh = clampNum(thighAvg * 0.00254, 0.1, 0.196);
+  const correctedCalf = clampNum(calfAvg * 0.00234, 0.07, 0.14);
+  dims.upperArmRadius = {
+    L: mixValue(neutralDims.upperArmRadius.L, correctedUpperArm, 0.78, 0.82, 1.18),
+    R: mixValue(neutralDims.upperArmRadius.R, correctedUpperArm, 0.78, 0.82, 1.18),
+  };
+  dims.forearmRadius = {
+    L: mixValue(neutralDims.forearmRadius.L, correctedForearm, 0.78, 0.82, 1.18),
+    R: mixValue(neutralDims.forearmRadius.R, correctedForearm, 0.78, 0.82, 1.18),
+  };
+  dims.thighRadius = {
+    L: mixValue(neutralDims.thighRadius.L, correctedThigh, 0.8, 0.84, 1.18),
+    R: mixValue(neutralDims.thighRadius.R, correctedThigh, 0.8, 0.84, 1.18),
+  };
+  dims.calfRadius = {
+    L: mixValue(neutralDims.calfRadius.L, correctedCalf, 0.8, 0.84, 1.18),
+    R: mixValue(neutralDims.calfRadius.R, correctedCalf, 0.8, 0.84, 1.18),
+  };
+  dims.armAnchorX = mixValue(neutralDims.armAnchorX, dims.armAnchorX, 0.84, 0.9, 1.1);
+  dims.forearmOffsetX = mixValue(neutralDims.forearmOffsetX, dims.forearmOffsetX, 0.82, 0.88, 1.1);
+  dims.legGap = mixValue(neutralDims.legGap, dims.legGap, 0.8, 0.82, 1.18);
+  dims.haloRadiusMap = {
+    ...dims.haloRadiusMap,
+    chest: (dims.torsoRings[2]?.x || 0.18) * 2.2,
+    waist: (dims.torsoRings[4]?.x || 0.16) * 2.45,
+    abdomen: (dims.torsoRings[5]?.x || 0.17) * 2.56,
+    hip: (dims.torsoRings[6]?.x || 0.18) * 2.45,
+    upperArmL: dims.upperArmRadius.L * 2.7,
+    upperArmR: dims.upperArmRadius.R * 2.7,
+    forearmL: dims.forearmRadius.L * 2.7,
+    forearmR: dims.forearmRadius.R * 2.7,
+    thighL: dims.thighRadius.L * 2.34,
+    thighR: dims.thighRadius.R * 2.34,
+    calfL: dims.calfRadius.L * 2.42,
+    calfR: dims.calfRadius.R * 2.42,
+    weightKg: (dims.torsoRings[4]?.x || 0.16) * 2.7,
+  };
+  return dims;
+};
+
+createWebGLBodyScene = function createWebGLBodySceneV28(canvas, THREE, OrbitControls) {
+  const perf = bodyPerfProfileV28();
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: !perf.reduced, alpha: true, powerPreference: 'high-performance' });
+  } catch (error) {
+    console.error(error);
+    return null;
+  }
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = perf.reduced ? 1.04 : 1.1;
+  renderer.shadowMap.enabled = perf.shadows;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0xf2f6ff, 5.2, 11.6);
+
+  const camera = new THREE.PerspectiveCamera(26, 1, 0.1, 30);
+  const controls = new OrbitControls(camera, canvas);
+  controls.enableDamping = true;
+  controls.enablePan = false;
+  controls.minDistance = 2.8;
+  controls.maxDistance = 6.2;
+  controls.minPolarAngle = 0.98;
+  controls.maxPolarAngle = 2.04;
+  controls.target.set(0, 0.14, 0);
+  controls.zoomSpeed = 1;
+  controls.rotateSpeed = 0.9;
+
+  const hemi = new THREE.HemisphereLight(0xf2f6ff, 0x253246, perf.reduced ? 1.4 : 1.56);
+  scene.add(hemi);
+
+  const key = new THREE.DirectionalLight(0xffffff, perf.reduced ? 1.7 : 2.0);
+  key.position.set(3.6, 5.0, 4.0);
+  key.castShadow = perf.shadows;
+  key.shadow.mapSize.width = perf.shadows ? 512 : 256;
+  key.shadow.mapSize.height = perf.shadows ? 512 : 256;
+  key.shadow.camera.near = 0.5;
+  key.shadow.camera.far = 16;
+  key.shadow.camera.left = -4;
+  key.shadow.camera.right = 4;
+  key.shadow.camera.top = 4;
+  key.shadow.camera.bottom = -4;
+  scene.add(key);
+
+  const rim = new THREE.DirectionalLight(0x8fa8ff, perf.reduced ? 0.78 : 1.02);
+  rim.position.set(-4.0, 3.1, -4.1);
+  scene.add(rim);
+
+  const fill = new THREE.PointLight(0xe8f2ff, perf.reduced ? 0.8 : 1.02, 12, 2);
+  fill.position.set(0, 1.7, 2.4);
+  scene.add(fill);
+
+  const floor = new THREE.Mesh(
+    new THREE.CircleGeometry(2.22, perf.reduced ? 44 : 72),
+    new THREE.ShadowMaterial({ transparent: true, opacity: perf.reduced ? 0.18 : 0.22, color: 0x7f9be0 })
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -1.2;
+  floor.receiveShadow = perf.shadows;
+  scene.add(floor);
+
+  const glowRing = new THREE.Mesh(
+    new THREE.RingGeometry(1.14, 1.96, perf.reduced ? 40 : 72),
+    new THREE.MeshBasicMaterial({ color: 0x8aa7ff, transparent: true, opacity: perf.reduced ? 0.08 : 0.15, side: THREE.DoubleSide })
+  );
+  glowRing.rotation.x = -Math.PI / 2;
+  glowRing.position.y = -1.17;
+  glowRing.visible = !perf.reduced;
+  scene.add(glowRing);
+
+  const focusHalo = new THREE.Mesh(
+    new THREE.TorusGeometry(0.34, 0.015, 12, perf.reduced ? 40 : 80),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 })
+  );
+  focusHalo.rotation.x = Math.PI / 2;
+  focusHalo.position.y = 0.12;
+  scene.add(focusHalo);
+
+  let currentGroup = null;
+  let ghostGroup = null;
+  let disposed = false;
+
+  function updateSize() {
+    const rect = canvas.getBoundingClientRect();
+    const width = Math.max(320, Math.round(rect.width || canvas.clientWidth || 320));
+    const height = Math.max(420, Math.round(rect.height || canvas.clientHeight || 420));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, perf.dpr));
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+  }
+
+  updateSize();
+  let resizeObserver = null;
+  if (typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(updateSize);
+    resizeObserver.observe(canvas);
+  }
+
+  function alignCamera(angle) {
+    const radius = perf.reduced ? 4.05 : 4.22;
+    const rad = (angle || 0) * Math.PI / 180;
+    camera.position.set(Math.sin(rad) * radius, 1.32, Math.cos(rad) * radius);
+    controls.target.set(0, 0.16, 0);
+    controls.update();
+  }
+
+  function setGroup(snapshot) {
+    if (currentGroup) {
+      scene.remove(currentGroup);
+      disposeThreeGroup(currentGroup, THREE);
+      currentGroup = null;
+    }
+    if (ghostGroup) {
+      scene.remove(ghostGroup);
+      disposeThreeGroup(ghostGroup, THREE);
+      ghostGroup = null;
+    }
+    if (!snapshot?.current) return;
+    currentGroup = buildWebglBodyGroup(THREE, snapshot.current, snapshot.previous, false);
+    scene.add(currentGroup);
+    if (snapshot.previous && bodyState.overlay) {
+      ghostGroup = buildWebglBodyGroup(THREE, snapshot.previous, null, true);
+      scene.add(ghostGroup);
+    }
+    updateFocus(snapshot);
+  }
+
+  function updateFocus(snapshot) {
+    const dims = buildBodyMeshDims(snapshot?.current);
+    const yMap = dims?.focusY || {};
+    const targetY = yMap[bodyState.focusField] ?? 0.02;
+    focusHalo.position.set(0, targetY, 0);
+    focusHalo.scale.setScalar((dims?.haloRadiusMap?.[bodyState.focusField] || 1) * 1.02);
+    focusHalo.material.opacity = bodyState.focusField ? (perf.reduced ? 0.12 : 0.18) : 0.02;
+  }
+
+  function animate(time) {
+    if (disposed) return;
+    requestAnimationFrame(animate);
+    controls.update();
+    if (!perf.reduced && glowRing.visible) glowRing.material.opacity = 0.14 + Math.sin(time / 950) * 0.025;
+    focusHalo.material.opacity = bodyState.focusField ? ((perf.reduced ? 0.1 : 0.14) + Math.sin(time / 220) * (perf.reduced ? 0.02 : 0.05)) : 0.02;
+    if (currentGroup && !perf.reduced) {
+      currentGroup.position.y = Math.sin(time / 980) * 0.01;
+      const mats = currentGroup.userData?.heatMaterials || [];
+      mats.forEach((entry, idx) => {
+        entry.material.emissiveIntensity = entry.baseIntensity * (0.92 + Math.sin(time / 320 + idx) * 0.08);
+      });
+    }
+    renderer.render(scene, camera);
+  }
+
+  alignCamera(bodyState.view || 0);
+  requestAnimationFrame(animate);
+
+  return {
+    mode: 'webgl',
+    snapshot: null,
+    setAngle(angle) {
+      bodyState.view = Number(angle) || 0;
+      alignCamera(bodyState.view);
+    },
+    focusField(field) {
+      bodyState.focusField = field || '';
+      if (this.snapshot) updateFocus(this.snapshot);
+    },
+    draw(snapshot) {
+      this.snapshot = snapshot;
+      setGroup(snapshot);
+      alignCamera(bodyState.view || 0);
+    },
+    dispose() {
+      disposed = true;
+      resizeObserver?.disconnect();
+      controls.dispose();
+      if (currentGroup) disposeThreeGroup(currentGroup, THREE);
+      if (ghostGroup) disposeThreeGroup(ghostGroup, THREE);
+      renderer.dispose();
+    },
+  };
+};
