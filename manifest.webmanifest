@@ -1,11 +1,13 @@
 {
-  "name": "好吃家",
+  "name": "好吃家 Core",
   "short_name": "好吃家",
-  "description": "按用户画像估算每日营养建议，记录食物摄入并查看当天营养进度的静态网页。",
-  "start_url": "./",
+  "description": "身体数据记录、3D人体、营养建议、食品库、营养进度与拍照分析。",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#f7f9fc",
-  "theme_color": "#0a84ff",
+  "orientation": "portrait",
+  "background_color": "#08101f",
+  "theme_color": "#08101f",
   "icons": [
     {
       "src": "./assets/icon-192.png",
@@ -17,12 +19,5 @@
       "sizes": "512x512",
       "type": "image/png"
     }
-  ],
-  "display_override": [
-    "standalone",
-    "minimal-ui",
-    "browser"
-  ],
-  "orientation": "portrait",
-  "scope": "./"
+  ]
 }

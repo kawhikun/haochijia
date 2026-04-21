@@ -1,71 +1,57 @@
-const CACHE_NAME = 'haochijia-v30-core-upgrade-20260421';
-const CORE = [
+const CACHE_NAME = 'haochijia-core-v31-20260421';
+const APP_SHELL = [
   './',
   './index.html',
   './404.html',
+  './manifest.webmanifest',
   './assets/styles.css',
-  './assets/core-upgrade-v30.css',
-  './assets/app.js',
-  './assets/body-module.js',
-  './assets/i18n.js',
-  './assets/food-label-upgrade.js',
-  './assets/music.js',
-  './assets/core-upgrade-v30.js',
-  './assets/music-lab.js',
-  './assets/music-lab.css',
+  './assets/core.js',
+  './assets/model-scene.js',
   './assets/nutrition-refs.js',
   './assets/icon-192.png',
-  './assets/icon-512.png',
-  './manifest.webmanifest',
-  './music-lab.html',
-  './data/foods-regions.meta.json'
+  './assets/icon-512.png'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE)).catch(() => null)
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil((async () => {
-    const keys = await caches.keys();
-    await Promise.all(keys.filter((key) => /^haochijia-/i.test(key) && key !== CACHE_NAME).map((key) => caches.delete(key)));
-    await self.clients.claim();
-  })());
+  event.waitUntil(
+    caches.keys().then((keys) => Promise.all(keys
+      .filter((key) => key !== CACHE_NAME)
+      .map((key) => caches.delete(key))))
+      .then(() => self.clients.claim())
+  );
 });
 
-async function networkFirst(request) {
-  try {
-    const response = await fetch(request);
-    const cache = await caches.open(CACHE_NAME);
-    cache.put(request, response.clone()).catch(() => null);
-    return response;
-  } catch (error) {
-    return (await caches.match(request)) || (await caches.match('./index.html'));
-  }
-}
-
-async function staleWhileRevalidate(request) {
-  const cached = await caches.match(request);
-  const fetchPromise = fetch(request).then(async (response) => {
-    if (response && response.ok) {
-      const cache = await caches.open(CACHE_NAME);
-      cache.put(request, response.clone()).catch(() => null);
-    }
-    return response;
-  }).catch(() => null);
-  return cached || fetchPromise || caches.match('./index.html');
-}
-
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
-  const url = new URL(event.request.url);
-  if (url.origin !== self.location.origin) return;
-  if (event.request.mode === 'navigate') {
-    event.respondWith(networkFirst(event.request));
+  const req = event.request;
+  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+
+  if (url.origin !== self.location.origin) {
     return;
   }
-  event.respondWith(staleWhileRevalidate(event.request));
+
+  if (url.pathname.endsWith('/data/foods.min.json')) {
+    event.respondWith(
+      caches.match(req).then((cached) => cached || fetch(req).then((response) => {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
+        return response;
+      }))
+    );
+    return;
+  }
+
+  event.respondWith(
+    caches.match(req).then((cached) => cached || fetch(req).then((response) => {
+      const clone = response.clone();
+      caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
+      return response;
+    }).catch(() => caches.match('./index.html')))
+  );
 });
