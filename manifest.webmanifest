@@ -1,13 +1,13 @@
 {
-  "name": "好吃家 Core",
+  "name": "好吃家 强化版",
   "short_name": "好吃家",
-  "description": "身体数据记录、3D人体、营养建议、食品库、营养进度与拍照分析。",
-  "start_url": "./index.html",
+  "description": "身体记录、3D 人体、国际/中文食品库、营养环、拍照分析、本地导出与 GitHub 同步。",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#08101f",
-  "theme_color": "#08101f",
+  "background_color": "#f7f1ec",
+  "theme_color": "#6c4d7e",
   "icons": [
     {
       "src": "./assets/icon-192.png",

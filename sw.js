@@ -1,4 +1,4 @@
-const CACHE_NAME = 'haochijia-core-v31-20260421';
+const CACHE_NAME = 'haochijia-premium-v31-20260421-r2';
 const APP_SHELL = [
   './',
   './index.html',
