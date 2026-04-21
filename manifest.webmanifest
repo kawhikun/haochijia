@@ -1,13 +1,11 @@
 {
-  "name": "好吃家 强化版",
+  "name": "好吃家",
   "short_name": "好吃家",
-  "description": "身体记录、3D 人体、国际/中文食品库、营养环、拍照分析、本地导出与 GitHub 同步。",
+  "description": "按用户画像估算每日营养建议，记录食物摄入并查看当天营养进度的静态网页。",
   "start_url": "./",
-  "scope": "./",
   "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#f7f1ec",
-  "theme_color": "#6c4d7e",
+  "background_color": "#f7f9fc",
+  "theme_color": "#0a84ff",
   "icons": [
     {
       "src": "./assets/icon-192.png",
@@ -19,5 +17,12 @@
       "sizes": "512x512",
       "type": "image/png"
     }
-  ]
+  ],
+  "display_override": [
+    "standalone",
+    "minimal-ui",
+    "browser"
+  ],
+  "orientation": "portrait",
+  "scope": "./"
 }

@@ -1,20 +1,554 @@
-<!doctype html>
+<!DOCTYPE html>
+
 <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta http-equiv="refresh" content="0; url=./index.html">
-    <title>好吃家 Core</title>
-    <script>
-      location.replace('./index.html');
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1, viewport-fit=cover" name="viewport"/>
+<meta content="好吃家：按用户画像估算每日营养建议，记录食物摄入，查看当天营养进度与缺口，支持食品库搜索、条码识别和营养表 OCR。" name="description"/>
+<meta content="#f6f8fb" name="theme-color"/>
+<meta content="yes" name="apple-mobile-web-app-capable"/>
+<meta content="default" name="apple-mobile-web-app-status-bar-style"/>
+<meta content="yes" name="mobile-web-app-capable"/>
+<title>好吃家</title>
+<link href="./manifest.webmanifest" rel="manifest"/>
+<link href="./assets/icon-192.png" rel="apple-touch-icon"/>
+<link href="./assets/styles.css" rel="stylesheet"/>
+</head>
+<body>
+<div class="bg-blur blur-a"></div>
+<div class="bg-blur blur-b"></div>
+<div class="app-shell">
+<header class="app-header card glass">
+<div class="brand-wrap">
+<div aria-hidden="true" class="brand-mark">好</div>
+<div>
+<p class="eyebrow" data-i18n="headerEyebrow">核心功能版 · 本地保存 · 手机友好</p>
+<h1 data-i18n="appName">好吃家</h1>
+<p class="header-text" data-i18n="headerText">打开就是 3D 人体与营养进度，只保留身体数据记录、食品库、拍照分析和数据导入导出。</p>
+<div class="header-quick-row">
+<button class="ghost-btn compact-btn" data-i18n="quickActionProfile" data-open-panel="profile" type="button">先设信息</button>
+<button class="ghost-btn compact-btn" data-i18n="quickActionLog" data-open-panel="food" type="button">开始记录</button>
+<button class="ghost-btn compact-btn" data-i18n="quickActionData" data-open-panel="data" type="button">数据中心</button>
+<button class="ghost-btn compact-btn" data-i18n="quickActionScan" data-open-panel="capture" type="button">拍照 / 扫码</button>
+</div>
+</div>
+</div>
+<div class="header-side">
+<label class="header-select">
+<span data-i18n="languageLabel">语言</span>
+<select aria-label="language selector" id="languageSelect">
+<option value="zh">简中</option>
+<option value="en">English</option>
+<option value="es">Español</option>
+</select>
+</label>
+<label class="header-select">
+<span data-i18n="regionLabel">地区数据</span>
+<select aria-label="food region selector" id="regionSelect">
+<option data-i18n="regionAuto" value="auto">自动</option>
+<option data-i18n="regionChina" value="cn">中国</option>
+<option data-i18n="regionGlobal" value="global">国际</option>
+</select>
+</label>
+<div class="header-status-line" id="regionHint">按设备所在地区自动选库。</div>
+<span class="top-pill" id="datasetStat">离线标签库</span>
+<span class="top-pill" id="todayBadge">—</span>
+<span class="top-pill subtle" id="platformBadge">本地自动保存</span>
+</div>
+</header>
+
+
+<main class="main-stack">
+<section class="overview-grid">
+<article class="card hero-card">
+<div class="section-head compact">
+<div>
+<p class="section-kicker" data-i18n="overviewKicker">今日概览</p>
+<h2 data-i18n="overviewTitle">今天的营养进度</h2>
+</div>
+<div class="inline-note" id="summaryHint">本地自动保存</div>
+</div>
+<div class="summary-grid" id="summaryCards"></div>
+<div class="quest-strip" id="questStrip"></div>
+<div class="overview-subgrid">
+<article class="mini-panel">
+<div class="mini-title" data-i18n="gapTitle">还可以补</div>
+<ul class="focus-list" id="gapList"></ul>
+</article>
+<article class="mini-panel">
+<div class="mini-title" data-i18n="riskTitle">今天少一点</div>
+<ul class="focus-list" id="riskList"></ul>
+</article>
+<article class="mini-panel">
+<div class="mini-title" data-i18n="doneTitle">已经到位</div>
+<ul class="focus-list" id="doneList"></ul>
+</article>
+</div>
+</article>
+<article class="card side-card">
+<div class="section-head compact">
+<div>
+<p class="section-kicker" data-i18n="dashboardKicker">营养看板</p>
+<h2 data-i18n="dashboardTitle">重点项目</h2>
+</div>
+<span class="inline-note" id="deficitSummary">—</span>
+</div>
+<div class="nutrient-grid compact-grid" id="nutrientGrid"></div>
+</article>
+</section>
+<section class="fold-card card" data-fold-id="profile" id="profilePanel">
+<header class="fold-header">
+<div>
+<p class="section-kicker" data-i18n="profileKicker">我的设置</p>
+<h2 data-i18n="profileTitle">个人营养参数</h2>
+<p class="fold-summary-text" id="profileSummary">—</p>
+</div>
+<div class="fold-actions">
+<button class="ghost-btn" data-i18n="saveCollapseBtn" id="saveCollapseProfileBtn" type="button">保存并收起</button>
+<button aria-label="收起或展开个人设置" class="icon-btn" data-fold-toggle="profile" type="button">收起</button>
+</div>
+</header>
+<div class="fold-body">
+<div class="preset-block">
+<div class="group-title" data-i18n="presetGroupTitle">一键套用人群预设</div>
+<div class="preset-row" id="profilePresetList"></div>
+<div class="muted small" data-i18n="presetHint" id="presetHint">先点一个接近你的类型，再微调就很快。</div>
+</div>
+<form autocomplete="off" class="form-grid" id="profileForm">
+<label class="field">
+<span data-i18n="fieldSex">性别</span>
+<select name="sex">
+<option data-i18n="sexFemale" value="female">女性</option>
+<option data-i18n="sexMale" value="male">男性</option>
+</select>
+</label>
+<label class="field">
+<span data-i18n="fieldAge">年龄</span>
+<input max="95" min="14" name="age" step="1" type="number"/>
+</label>
+<label class="field">
+<span data-i18n="fieldHeight">身高 (cm)</span>
+<input max="230" min="120" name="heightCm" step="1" type="number"/>
+</label>
+<label class="field">
+<span data-i18n="fieldWeight">体重 (kg)</span>
+<input max="250" min="30" name="weightKg" step="0.1" type="number"/>
+</label>
+<label class="field full-span">
+<span data-i18n="fieldActivity">活动水平</span>
+<select name="activity">
+<option data-i18n="activitySedentary" value="sedentary">久坐</option>
+<option data-i18n="activityLowActive" value="lowActive">低活动</option>
+<option data-i18n="activityActive" value="active">活跃</option>
+<option data-i18n="activityVeryActive" value="veryActive">高活动</option>
+</select>
+</label>
+<label class="field">
+<span data-i18n="fieldGoal">目标</span>
+<select name="goal">
+<option data-i18n="goalMaintain" value="maintain">维持</option>
+<option data-i18n="goalFatLoss" value="fatLoss">减脂</option>
+<option data-i18n="goalRecomp" value="recomposition">体成分优化</option>
+<option data-i18n="goalMuscleGain" value="muscleGain">增肌</option>
+</select>
+</label>
+<label class="field">
+<span data-i18n="fieldTraining">训练模式</span>
+<select name="training">
+<option data-i18n="trainingNone" value="none">日常活动</option>
+<option data-i18n="trainingGeneral" value="general">规律健身</option>
+<option data-i18n="trainingResistance" value="resistance">力量 / 增肌</option>
+<option data-i18n="trainingMixed" value="mixed">球类 / 综合训练</option>
+<option data-i18n="trainingEndurance" value="endurance">耐力训练</option>
+</select>
+</label>
+<label class="field full-span">
+<span data-i18n="fieldTrainingHours">训练时长（小时 / 周）</span>
+<input max="40" min="0" name="trainingHoursWeek" placeholder="例如 4.5" step="0.5" type="number"/>
+</label>
+<label class="field">
+<span data-i18n="fieldDiet">饮食方式</span>
+<select name="diet">
+<option data-i18n="dietOmnivore" value="omnivore">杂食</option>
+<option data-i18n="dietPescetarian" value="pescetarian">鱼素</option>
+<option data-i18n="dietVegetarian" value="vegetarian">素食</option>
+<option data-i18n="dietVegan" value="vegan">纯素</option>
+</select>
+</label>
+<label class="field">
+<span data-i18n="fieldPhysiology">生理状态（仅女性生效）</span>
+<select name="physiology">
+<option data-i18n="physiologyStandard" value="standard">常规状态</option>
+<option data-i18n="physiologyPreg1" value="pregnantT1">孕早期</option>
+<option data-i18n="physiologyPreg2" value="pregnantT2">孕中期</option>
+<option data-i18n="physiologyPreg3" value="pregnantT3">孕晚期</option>
+<option data-i18n="physiologyLact06" value="lactation0_6">哺乳期（0–6 个月）</option>
+<option data-i18n="physiologyLact712" value="lactation7_12">哺乳期（7–12 个月）</option>
+</select>
+</label>
+<label class="field full-span">
+<span data-i18n="fieldGlucose">糖代谢状态</span>
+<select name="glucoseStatus">
+<option data-i18n="glucoseNormal" value="normal">无特殊情况</option>
+<option data-i18n="glucosePrediabetes" value="prediabetes">糖前期</option>
+<option data-i18n="glucoseType1" value="type1">1 型糖尿病</option>
+<option data-i18n="glucoseType2" value="type2">2 型糖尿病</option>
+<option data-i18n="glucoseGestational" value="gestational">妊娠糖尿病</option>
+</select>
+</label>
+<label class="checkbox-field full-span">
+<input name="smoker" type="checkbox"/>
+<span data-i18n="fieldSmoker">吸烟</span>
+</label>
+<div class="group-title full-span" data-i18n="groupConcerns">额外关注</div>
+<label class="checkbox-field">
+<input name="hypertension" type="checkbox"/>
+<span data-i18n="concernHypertension">高血压 / 控钠</span>
+</label>
+<label class="checkbox-field">
+<input name="dyslipidemia" type="checkbox"/>
+<span data-i18n="concernDyslipidemia">高血脂 / 控饱和脂肪</span>
+</label>
+<label class="checkbox-field">
+<input name="boneRisk" type="checkbox"/>
+<span data-i18n="concernBone">骨健康关注</span>
+</label>
+<label class="checkbox-field">
+<input name="anemiaRisk" type="checkbox"/>
+<span data-i18n="concernAnemia">贫血风险关注</span>
+</label>
+</form>
+<details class="details-card inline-reference-details">
+<summary data-i18n="referenceToggle">查看每日参考值与计算依据</summary>
+<p class="inline-details-summary" id="referenceSummary">—</p>
+<div class="reference-grid">
+<article class="sub-card">
+<div class="mini-title" data-i18n="referenceBasisTitle">计算基础</div>
+<div class="key-list" id="basisList"></div>
+</article>
+<article class="sub-card">
+<div class="mini-title" data-i18n="referenceNotesTitle">提醒</div>
+<ul class="note-list" id="notesList"></ul>
+</article>
+</div>
+<div class="targets-visual-grid" id="targetsVisualGrid"></div>
+<div class="table-wrap">
+<table class="targets-table">
+<thead>
+<tr>
+<th data-i18n="tableNutrient">营养项目</th>
+<th data-i18n="tableTarget">建议值</th>
+<th data-i18n="tableType">类型</th>
+<th data-i18n="tableNote">说明</th>
+</tr>
+</thead>
+<tbody id="targetsTableBody"></tbody>
+</table>
+</div>
+</details>
+</div>
+</section>
+<section class="fold-card card" data-fold-id="food" id="foodPanel">
+<header class="fold-header">
+<div>
+<p class="section-kicker" data-i18n="foodKicker">记录摄入</p>
+<h2 data-i18n="foodTitle">今天吃了什么</h2>
+<p class="fold-summary-text" id="foodPanelSummary">搜索食品、加饮水、看实时更新。</p>
+</div>
+<div class="fold-actions">
+<button aria-label="收起或展开记录区" class="icon-btn" data-fold-toggle="food" type="button">收起</button>
+</div>
+</header>
+<div class="fold-body">
+<div class="quick-grid">
+<div class="quick-main">
+<div class="sub-card water-block">
+<div class="mini-title" data-i18n="quickWaterTitle">快捷饮水</div>
+<div class="quick-water" id="quickAddWater">
+<button class="water-btn" data-water-add="200" type="button">+200 mL</button>
+<button class="water-btn" data-water-add="350" type="button">+350 mL</button>
+<button class="water-btn" data-water-add="500" type="button">+500 mL</button>
+<button class="water-btn" data-water-add="750" type="button">+750 mL</button>
+</div>
+</div>
+<div class="sub-card">
+<div class="mini-title" data-i18n="recentTitle">常用记录</div>
+<div class="recent-list" id="recentList"></div>
+</div>
+<div class="sub-card">
+<label class="field search-box">
+<span data-i18n="foodSearchTitle">食品搜索</span>
+<input autocomplete="off" data-i18n-placeholder="foodSearchPlaceholder" enterkeyhint="search" id="foodSearchInput" placeholder="输入食品名、品牌或条码" type="search"/>
+</label>
+<div class="search-meta-row">
+<div class="muted small" id="searchHint">支持中文名、原文名、品牌和条码搜索。</div>
+<div class="muted small" id="foodDataStatus">—</div>
+</div>
+<div class="food-search-results" id="foodSearchResults"></div>
+</div>
+</div>
+<aside class="quick-side">
+<article class="sub-card sticky-card">
+<div class="mini-title" data-i18n="gapTitle">还可以补</div>
+<div class="chip-list" id="liveGapChips"></div>
+</article>
+<article class="sub-card sticky-card">
+<div class="mini-title" data-i18n="riskTitle">今天少一点</div>
+<div class="chip-list" id="liveRiskChips"></div>
+</article>
+<article class="sub-card sticky-card">
+<div class="mini-title" data-i18n="exploreTitle">探索一下</div>
+<div class="muted small" id="exploreHint">根据今天状态，给你更快的下一步。</div>
+<div class="explore-card-list" id="exploreCards"></div>
+<div class="explore-result-list" id="exploreResults"></div>
+</article>
+<article class="sub-card sticky-card">
+<div class="mini-title" data-i18n="favoritesTitle">我的常吃</div>
+<div class="muted small" data-i18n="favoritesHint">把常吃食物收藏到这里，之后一键加入。</div>
+<ul class="suggestion-list" id="favoritesList"></ul>
+</article>
+</aside>
+</div>
+</div>
+</section>
+
+
+<section class="fold-card card" data-fold-id="today" id="todayPanel">
+<header class="fold-header">
+<div>
+<p class="section-kicker" data-i18n="todayKicker">今日记录</p>
+<h2 data-i18n="todayTitle">已经记下来的内容</h2>
+<p class="fold-summary-text" id="daySummary">—</p>
+</div>
+<div class="fold-actions">
+<button aria-label="收起或展开今日记录" class="icon-btn" data-fold-toggle="today" type="button">收起</button>
+</div>
+</header>
+<div class="fold-body">
+<div class="day-toolbar">
+<label class="field date-field">
+<span data-i18n="fieldDate">日期</span>
+<input id="logDate" type="date"/>
+</label>
+<div class="toolbar-pills">
+<span class="top-pill subtle" id="dayCount">0 条食品记录</span>
+<span class="top-pill subtle" id="waterCount">0 mL 饮水</span>
+</div>
+</div>
+<div class="log-list" id="logList"></div>
+<div class="toolbar-end">
+<button class="ghost-btn danger" data-i18n="clearDayBtn" id="clearDayBtn" type="button">清空当天</button>
+<button class="ghost-btn" data-i18n="exportJsonBtn" id="exportJsonBtn" type="button">导出 JSON</button>
+<button class="ghost-btn" data-i18n="exportCsvBtn" id="exportCsvBtn" type="button">导出 CSV</button>
+</div>
+</div>
+</section>
+<section class="fold-card card" data-fold-id="capture" id="capturePanel">
+<header class="fold-header">
+<div>
+<p class="section-kicker" data-i18n="captureKicker">拍照 / 扫码</p>
+<h2 data-i18n="captureTitle">识别包装营养表</h2>
+<p class="fold-summary-text" data-i18n="captureSummary">可以拍营养成分表，也可以直接扫条码。</p>
+</div>
+<div class="fold-actions">
+<button aria-label="收起或展开识别区" class="icon-btn" data-fold-toggle="capture" type="button">展开</button>
+</div>
+</header>
+<div class="fold-body">
+<div class="capture-grid">
+<article class="sub-card">
+<label class="field">
+<span data-i18n="captureChooseImage">选择图片</span>
+<input accept="image/*" capture="environment" id="ocrImageInput" type="file"/>
+</label>
+<div class="capture-preview-shell">
+<img alt="待识别图片预览" class="capture-preview" hidden="" id="ocrPreviewImg"/>
+</div>
+<label class="field">
+<span data-i18n="captureLang">OCR 语言</span>
+<select id="ocrLang">
+<option data-i18n="captureLangZhEn" selected="" value="eng+chi_sim">中英混合</option>
+<option data-i18n="captureLangZh" value="chi_sim">简体中文</option>
+<option data-i18n="captureLangEn" value="eng">English</option>
+</select>
+</label>
+<label class="field">
+<span data-i18n="captureMode">识别模式</span>
+<select id="ocrMode">
+<option data-i18n="captureModeSmart" selected="" value="smart">智能增强（推荐）</option>
+<option data-i18n="captureModeContrast" value="highContrast">高对比增强</option>
+<option data-i18n="captureModeOriginal" value="original">原图识别</option>
+</select>
+</label>
+<div class="muted small" data-i18n="captureTip">尽量正对包装拍摄，裁掉多余背景，保留营养项目名、数值和单位。</div>
+<div class="capture-actions">
+<button class="primary-btn" data-i18n="captureRunOcr" id="ocrRunBtn" type="button">识别营养表</button>
+<button class="ghost-btn" data-i18n="captureBarcode" id="barcodeBtn" type="button">识别条码</button>
+</div>
+<div class="muted small" id="ocrStatus">等待图片。</div>
+<div class="muted small" id="ocrMetaHint">识别后可直接确认并加入今天记录。</div>
+<div class="muted small"><span data-i18n="captureBarcodeResult">条码识别结果：</span><span id="scanPreviewName">无</span></div>
+<pre class="ocr-raw" id="ocrRawText">识别出的原始文本会显示在这里。</pre>
+</article>
+<article class="sub-card">
+<div class="section-head compact">
+<div>
+<p class="section-kicker" data-i18n="manualKicker">手动确认</p>
+<h2 data-i18n="manualTitle">导入到今天</h2>
+</div>
+</div>
+<div class="manual-grid">
+<label class="field full-span">
+<span data-i18n="manualNameLabel">食品名称</span>
+<input data-i18n-placeholder="manualNamePlaceholder" id="manualName" placeholder="例如：燕麦饮料 / 蛋白棒" type="text"/>
+</label>
+<label class="field">
+<span data-i18n="manualBasisLabel">营养基准</span>
+<select id="manualBasis">
+<option data-i18n="manualBasis100g" value="100g">每 100 g</option>
+<option data-i18n="manualBasis100ml" value="100ml">每 100 mL</option>
+<option data-i18n="manualBasisServing" value="serving">每 1 份</option>
+</select>
+</label>
+<label class="field">
+<span data-i18n="manualServingLabel">每份重量 / 体积</span>
+<input id="manualServingSize" min="1" placeholder="例如 250" step="1" type="number"/>
+</label>
+<label class="field">
+<span data-i18n="manualAmountLabel">本次录入数量（g / mL）</span>
+<input id="manualAmount" min="1" step="1" type="number" value="100"/>
+</label>
+<label class="field">
+<span data-i18n="manualServingsLabel">份数</span>
+<input id="manualServings" min="0.1" step="0.1" type="number" value="1"/>
+</label>
+<div class="manual-fields-grid full-span" id="manualFields"></div>
+</div>
+<div class="capture-actions">
+<button class="primary-btn" data-i18n="manualSaveBtn" id="manualSaveBtn" type="button">加入今天记录</button>
+<button class="ghost-btn" data-i18n="manualClearBtn" id="manualClearBtn" type="button">清空</button>
+</div>
+<div class="muted small" id="manualStatus">识别后可以修改再保存。</div>
+</article>
+</div>
+</div>
+</section>
+<section class="fold-card card" data-fold-id="data" id="dataPanel">
+<header class="fold-header">
+<div>
+<p class="section-kicker" data-i18n="dataKicker">食品库</p>
+<h2 data-i18n="dataTitle">数据说明</h2>
+<p class="fold-summary-text" id="metaNote">—</p>
+</div>
+<div class="fold-actions">
+<button aria-label="收起或展开数据说明" class="icon-btn" data-fold-toggle="data" type="button">展开</button>
+</div>
+</header>
+<div class="fold-body"><div id="coreDataToolsMount"></div>
+<div class="data-visual-grid" id="datasetVisualBoard"></div>
+<div class="translation-visual-grid" id="translationVisualBoard"></div>
+<div class="data-note" id="datasetCoverage">—</div>
+<div class="data-note" id="datasetAudit">—</div>
+</div>
+</section>
+</main>
+</div>
+<button aria-label="quick log" class="chef-fab" id="chefFab" type="button">⚡</button>
+<div class="sheet-backdrop" hidden="" id="quickSheetBackdrop"></div>
+<section aria-hidden="true" class="quick-sheet" id="quickSheet">
+<div aria-hidden="true" class="quick-sheet-handle"></div>
+<header class="quick-sheet-head">
+<div>
+<p class="section-kicker" data-i18n="foodKicker">记录摄入</p>
+<h2 data-i18n="quickActionLog">开始记录</h2>
+</div>
+<button aria-label="close" class="icon-btn" id="quickSheetClose" type="button">×</button>
+</header>
+<div class="quick-sheet-body">
+<article class="sub-card quick-sheet-block">
+<div class="mini-title" data-i18n="quickWaterTitle">快捷饮水</div>
+<div class="quick-water" id="sheetWaterRow">
+<button class="water-btn" data-sheet-water-add="200" type="button">+200 mL</button>
+<button class="water-btn" data-sheet-water-add="350" type="button">+350 mL</button>
+<button class="water-btn" data-sheet-water-add="500" type="button">+500 mL</button>
+</div>
+</article>
+<article class="sub-card quick-sheet-block">
+<label class="field search-box">
+<span data-i18n="foodSearchTitle">食品搜索</span>
+<input autocomplete="off" data-i18n-placeholder="foodSearchPlaceholder" enterkeyhint="search" id="quickSheetSearchInput" placeholder="输入食品名、品牌或条码" type="search"/>
+</label>
+<div class="capture-actions">
+<button class="primary-btn" data-i18n="foodSearchTitle" id="quickSheetSearchBtn" type="button">食品搜索</button>
+<button class="ghost-btn" data-i18n="quickActionScan" data-open-panel="capture" type="button">拍照 / 扫码</button>
+</div>
+</article>
+<div class="quick-sheet-grid">
+<article class="sub-card quick-sheet-block">
+<div class="mini-title" data-i18n="recentTitle">常用记录</div>
+<div class="sheet-mini-list" id="quickSheetRecentList"></div>
+</article>
+<article class="sub-card quick-sheet-block">
+<div class="mini-title" data-i18n="favoritesTitle">我的常吃</div>
+<div class="sheet-mini-list" id="quickSheetFavoriteList"></div>
+</article>
+</div>
+</div>
+</section>
+
+
+<div aria-atomic="true" aria-live="polite" class="toast-rack" id="toastRack"></div>
+<nav aria-label="快捷操作" class="mobile-dock">
+<button class="dock-btn" data-i18n="dockOverview" data-open-panel="top" type="button">概览</button>
+<button class="dock-btn" data-i18n="dockProfile" data-open-panel="profile" type="button">设置</button>
+<button class="dock-btn" data-i18n="dockFood" data-open-panel="food" type="button">记录</button>
+<button class="dock-btn" data-i18n="dockCapture" data-open-panel="capture" type="button">拍照</button>
+<button class="dock-btn" data-i18n="dockWater" data-water-add="350" type="button">+ 水</button>
+</nav>
+<script>
+      (function () {
+        if (location.protocol !== 'file:') return;
+        var style = document.createElement('style');
+        style.textContent = [
+          '.local-file-warning{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;background:linear-gradient(180deg,#fffaf5 0%,#fff 100%);}',
+          '.local-file-warning-card{max-width:760px;width:min(100%,760px);background:#fff;border:1px solid rgba(15,23,42,.08);box-shadow:0 24px 80px rgba(15,23,42,.14);border-radius:28px;padding:28px;line-height:1.65;color:#111827;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}',
+          '.local-file-warning h1{margin:0 0 10px;font-size:28px;line-height:1.2;}',
+          '.local-file-warning p{margin:0 0 12px;font-size:16px;}',
+          '.local-file-warning ol{margin:8px 0 0 20px;padding:0;}',
+          '.local-file-warning li{margin:8px 0;}',
+          '.local-file-warning code{padding:2px 6px;border-radius:8px;background:#f3f4f6;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}',
+          '.local-file-warning .tip{margin-top:14px;padding:12px 14px;border-radius:14px;background:#eff6ff;color:#1d4ed8;}',
+          '.local-file-warning .files{margin-top:16px;display:grid;gap:8px;}',
+          '.local-file-warning .file{padding:12px 14px;border-radius:14px;background:#f8fafc;border:1px dashed rgba(15,23,42,.18);font-size:14px;}',
+          '.local-file-warning strong{font-weight:700;}'
+        ].join('');
+        document.head.appendChild(style);
+        var wrap = document.createElement('section');
+        wrap.className = 'local-file-warning';
+        wrap.innerHTML = [
+          '<div class="local-file-warning-card">',
+          '  <h1>你现在是直接双击本地打开的</h1>',
+          '  <p>当前地址以 <code>file:///</code> 开头时，这个项目的核心功能会失效：模块脚本、食品库读取、条码识别、安全能力和缓存机制都可能不起作用，所以会出现“按钮像没反应、搜不到库、音乐不启动”的假象。</p>',
+          '  <p><strong>正确打开方式：</strong></p>',
+          '  <ol>',
+          '    <li><strong>Windows：</strong>双击 <code>start-local.bat</code></li>',
+          '    <li><strong>macOS：</strong>双击 <code>start-local.command</code></li>',
+          '    <li><strong>通用：</strong>在当前目录运行 <code>python3 run_local_server.py</code></li>',
+          '  </ol>',
+          '  <div class="tip">启动后请在浏览器打开 <code>http://127.0.0.1:8765</code>（端口被占用时会自动换端口）。</div>',
+          '  <div class="files">',
+          '    <div class="file">已在包里附带：<strong>run_local_server.py</strong>、<strong>start-local.command</strong>、<strong>start-local.bat</strong>、<strong>LOCAL_RUN_README_ZH.md</strong></div>',
+          '    <div class="file">如果你是要发布到线上，请把整个目录完整上传到静态站点，不要只复制部分文件。</div>',
+          '  </div>',
+          '</div>'
+        ].join('');
+        document.addEventListener('DOMContentLoaded', function () {
+          document.body.innerHTML = '';
+          document.body.appendChild(wrap);
+        });
+      }());
     </script>
-    <style>
-      html, body { height: 100%; margin: 0; }
-      body { display: grid; place-items: center; background: #08101f; color: #eef4ff; font: 16px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
-      a { color: #8cb3ff; }
-    </style>
-  </head>
-  <body>
-    <p>正在返回 <a href="./index.html">好吃家 Core</a>…</p>
-  </body>
+<script src="./assets/app.js" type="module"></script>
+<script src="./assets/body-module.js" type="module"></script>
+</body>
 </html>
