@@ -12,8 +12,8 @@ import {
   clamp,
   NUTRIENT_DEFS,
   OCR_FIELD_MAP,
-} from './nutrition-refs.js';
-import { createBodyModelController } from './model-scene.js';
+} from './nutrition-refs.js?v=20260422a';
+import { createBodyModelController } from './model-scene.js?v=20260422a';
 
 const STORAGE_KEY = 'haochijia.core.v31.snapshot';
 const DB_NAME = 'haochijia-core-v31';
@@ -143,6 +143,73 @@ const state = {
   githubSyncTimer: null,
 };
 
+const V32_BUILD_VERSION = 'v33-paris-refined';
+const V32_STORAGE_KEYS = ['haochijia.core.v33.snapshot', 'haochijia.core.v32.snapshot', STORAGE_KEY];
+const V32_IDB_SNAPSHOT_KEYS = ['snapshot-v33', 'snapshot-v32', IDB_SNAPSHOT_KEY];
+const V32_IDB_BACKUP_KEY = 'snapshot-history-v33';
+const LOCAL_BACKUP_LIMIT = 18;
+const FOOD_REGION_OPTIONS = new Set(['all', 'cn', 'intl']);
+const FOOD_NAME_MODE_OPTIONS = new Set(['zh', 'en', 'original']);
+const V32_FOOD_BANK_FILES = Object.freeze({
+  cn: ['./data/foods-cn.min.json?v=20260422a'],
+  intl: ['./data/foods-global.part01.min.json?v=20260422a', './data/foods-global.part02.min.json?v=20260422a'],
+});
+
+Object.assign(DEFAULT_GITHUB, {
+  owner: 'kawhikun',
+  repo: 'haochijia',
+  branch: 'main',
+  path: 'data/haochijia-user.json',
+});
+Object.assign(RING_COLORS, {
+  protein: '#6c8fa9',
+  fat: '#fec187',
+  carbs: '#99c4cf',
+  fiber: '#a7c190',
+  water: '#cddae2',
+  calcium: '#b484b0',
+  vitaminD: '#f4796a',
+  vitaminK: '#6b8857',
+  iron: '#d85b72',
+  folate: '#a6d3b1',
+  vitaminB12: '#795f9c',
+  potassium: '#518463',
+  magnesium: '#6c4d7e',
+  omega3: '#4c697a',
+  vitaminC: '#f4796a',
+});
+DISPLAY_LABELS.vitaminD = '维生素 D3';
+DISPLAY_LABELS.vitaminK = '维生素 K1/K2';
+state.version = V32_BUILD_VERSION;
+state.foodLibrary = state.foodLibrary || 'all';
+state.foodNameMode = state.foodNameMode || 'zh';
+state.localBackupMeta = Array.isArray(state.localBackupMeta) ? state.localBackupMeta : [];
+state.photoShape = normalizePhotoShape(state.photoShape || {});
+state.github = resolveGitHubSnapshot(state.github || {});
+state.foodBanks = state.foodBanks && typeof state.foodBanks === 'object' ? state.foodBanks : { cn: [], intl: [] };
+state.foodBankLoaded = state.foodBankLoaded && typeof state.foodBankLoaded === 'object' ? state.foodBankLoaded : { cn: false, intl: false };
+state.foodBankPromises = state.foodBankPromises && typeof state.foodBankPromises === 'object' ? state.foodBankPromises : { cn: null, intl: null };
+state.foodBankCounts = state.foodBankCounts && typeof state.foodBankCounts === 'object' ? state.foodBankCounts : { cn: 0, intl: 0 };
+
+function showDialogSafe(dialog) {
+  if (!dialog) return;
+  if (typeof dialog.showModal === 'function') {
+    if (!dialog.open) dialog.showModal();
+    return;
+  }
+  dialog.setAttribute('open', 'open');
+}
+
+function closeDialogSafe(dialog) {
+  if (!dialog) return;
+  if (typeof dialog.close === 'function') {
+    if (dialog.open) dialog.close();
+    return;
+  }
+  dialog.removeAttribute('open');
+}
+
+
 window.addEventListener('DOMContentLoaded', init);
 window.addEventListener('resize', () => {
   window.clearTimeout(window.__haochijiaRingResizeTimer);
@@ -152,47 +219,74 @@ window.addEventListener('resize', () => {
 async function init() {
   bindDom();
   document.body.dataset.platform = state.platform.key;
-  DOM.platformBadge.textContent = state.platform.label;
-  await loadState();
+  if (DOM.platformBadge) DOM.platformBadge.textContent = state.platform.label;
+  try {
+    await loadState();
+  } catch (error) {
+    console.warn('[haochijia] loadState failed, fallback snapshot used.', error);
+    applySnapshot(createDefaultSnapshot());
+    state.localBackupMeta = [];
+  }
   fillFormsFromState();
   bindEvents();
-  state.model = createBodyModelController(DOM.bodyCanvas, {
-    onLongPress: () => activateTab('body'),
-    onViewReset: () => {
-      DOM.focusModeText.textContent = `${state.focusMode?.label || '基础模式'} · 已回正`;
-      window.setTimeout(() => renderHeroMeta(), 900);
-    },
-  });
-  await state.model.ready;
-  registerServiceWorker();
+  try {
+    state.model = createBodyModelController(DOM.bodyCanvas, {
+      platformKey: state.platform.key,
+      onLongPress: () => activateTab('body'),
+      onViewReset: () => {
+        DOM.focusModeText.textContent = `${nutrientDisplayName(state.activeRing)} 高亮 · 视角已回正`;
+        window.setTimeout(() => renderHeroMeta(), 900);
+      },
+    });
+    await state.model.ready;
+  } catch (error) {
+    console.warn('[haochijia] model bootstrap failed, app continues in data-first mode.', error);
+    DOM.bodyStatusHint.textContent = '3D 模型加载受阻，已切换到数据优先模式';
+    state.model = {
+      setSnapshot() {},
+      setFocusField() {},
+      setAccentColor() {},
+      resetView() {},
+      dispose() {},
+      ready: Promise.resolve(),
+    };
+  }
+  try {
+    await registerServiceWorker();
+  } catch (error) {
+    console.warn('[haochijia] service worker register skipped.', error);
+  }
   requestIdleLoadFoods();
   renderAll();
-  await updatePersistStatus();
+  await updatePersistStatus().catch(() => false);
+  renderLocalBackupMeta();
+  DOM.appShell?.classList?.add('is-ready');
 }
 
 function bindDom() {
   const ids = [
-    'appShell', 'platformBadge', 'menuBtn', 'bodyCanvas', 'stagePhotoRef', 'focusModePill', 'focusModeText', 'ringOrbit',
+    'appShell', 'platformBadge', 'menuBtn', 'heroStage', 'bodyCanvas', 'stagePhotoRef', 'focusModePill', 'focusModeText', 'ringOrbit',
     'profileForm', 'bodyForm', 'bodyStatusHint', 'importBodyBtn', 'saveBodyBtn', 'photoShapeBtn', 'suggestionSummary', 'suggestionCards',
     'bodyHistoryList', 'bodyHistoryMeta', 'foodSearchStatus', 'foodSearchInput', 'foodAmountInput', 'foodSearchResults', 'captureInput',
     'runBarcodeBtn', 'runOcrBtn', 'capturePreview', 'captureStatus', 'captureResult', 'captureFoodName', 'captureBasis', 'captureServingSize',
     'captureServings', 'captureNutrients', 'addCaptureFoodBtn', 'saveCaptureFoodBtn', 'progressList', 'dayTotalBadge', 'logList', 'clearDayBtn',
-    'photoDialog', 'photoInput', 'photoPreview', 'shapeShoulder', 'shapeWaist', 'shapeHip', 'shapeLeg', 'photoResetBtn', 'photoApplyBtn',
-    'dataDialog', 'persistStatus', 'importAllBtn', 'exportAllBtn', 'bodyCsvBtn', 'persistBtn', 'githubStatus', 'ghOwner', 'ghRepo', 'ghBranch',
-    'ghPath', 'ghToken', 'ghAutoSync', 'ghRestoreBtn', 'ghSyncBtn', 'importInput'
+    'photoDialog', 'photoInput', 'photoPreview', 'photoAutoBtn', 'photoShapeMeta', 'shapeShoulder', 'shapeChest', 'shapeWaist', 'shapeHip', 'shapeArm', 'shapeLeg', 'photoResetBtn', 'photoApplyBtn',
+    'dataDialog', 'persistStatus', 'localBackupMeta', 'restoreLocalBtn', 'importAllBtn', 'exportAllBtn', 'bodyJsonBtn', 'bodyCsvBtn', 'intakeCsvBtn', 'persistBtn', 'githubStatus', 'ghOwner', 'ghRepo', 'ghBranch',
+    'ghPath', 'ghToken', 'ghAutoSync', 'ghRestoreBtn', 'ghSyncBtn', 'importInput', 'foodRegionGroup', 'foodLanguageGroup'
   ];
   ids.forEach((id) => { DOM[id] = document.getElementById(id); });
 }
+
 
 function bindEvents() {
   document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => activateTab(btn.dataset.tab || 'body'));
   });
 
-  DOM.menuBtn.addEventListener('click', () => DOM.dataDialog.showModal());
+  DOM.menuBtn.addEventListener('click', () => showDialogSafe(DOM.dataDialog));
   DOM.photoShapeBtn.addEventListener('click', () => {
     fillPhotoDialog();
-    DOM.photoDialog.showModal();
+    showDialogSafe(DOM.photoDialog);
   });
   DOM.importBodyBtn.addEventListener('click', () => {
     DOM.importInput.dataset.mode = 'body';
@@ -212,11 +306,30 @@ function bindEvents() {
 
   DOM.foodSearchInput.addEventListener('input', onFoodSearchInput);
   DOM.foodSearchInput.addEventListener('focus', async () => {
-    await ensureFoodsLoaded();
+    await ensureFoodsLoaded().catch(() => null);
     renderFoodSearchResults();
   });
   DOM.foodAmountInput.addEventListener('input', renderFoodSearchResults);
   DOM.foodSearchResults.addEventListener('click', onFoodResultsClick);
+  DOM.foodRegionGroup?.addEventListener('click', async (event) => {
+    const btn = event.target.closest('[data-food-region]');
+    if (!btn) return;
+    const nextLibrary = FOOD_REGION_OPTIONS.has(btn.dataset.foodRegion) ? btn.dataset.foodRegion : 'all';
+    if (state.foodLibrary === nextLibrary) return;
+    state.foodLibrary = nextLibrary;
+    persistState({ syncEligible: false });
+    await ensureFoodsLoaded().catch(() => null);
+    if (state.searchQuery.trim()) state.searchResults = searchFoods(state.searchQuery).slice(0, FOOD_SEARCH_LIMIT);
+    renderAll();
+  });
+  DOM.foodLanguageGroup?.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-food-lang]');
+    if (!btn) return;
+    state.foodNameMode = FOOD_NAME_MODE_OPTIONS.has(btn.dataset.foodLang) ? btn.dataset.foodLang : 'zh';
+    if (state.searchQuery.trim()) state.searchResults = searchFoods(state.searchQuery).slice(0, FOOD_SEARCH_LIMIT);
+    persistState({ syncEligible: false });
+    renderAll();
+  });
 
   DOM.captureInput.addEventListener('change', updateCapturePreview);
   DOM.runBarcodeBtn.addEventListener('click', runBarcodeSearch);
@@ -230,16 +343,20 @@ function bindEvents() {
   DOM.clearDayBtn.addEventListener('click', clearTodayLog);
 
   DOM.photoInput.addEventListener('change', onPhotoSelected);
-  ['shapeShoulder', 'shapeWaist', 'shapeHip', 'shapeLeg'].forEach((id) => {
+  ['shapeShoulder', 'shapeChest', 'shapeWaist', 'shapeHip', 'shapeArm', 'shapeLeg'].forEach((id) => {
     DOM[id].addEventListener('input', renderPhotoPreviewMeta);
   });
+  DOM.photoAutoBtn?.addEventListener('click', autoEstimatePhotoShape);
   DOM.photoResetBtn.addEventListener('click', resetPhotoShape);
   DOM.photoApplyBtn.addEventListener('click', applyPhotoShape);
 
   DOM.exportAllBtn.addEventListener('click', exportAllData);
+  DOM.bodyJsonBtn?.addEventListener('click', exportBodyJson);
   DOM.bodyCsvBtn.addEventListener('click', exportBodyCsv);
+  DOM.intakeCsvBtn?.addEventListener('click', exportIntakeCsv);
+  DOM.restoreLocalBtn?.addEventListener('click', restoreLatestLocalBackup);
   DOM.persistBtn.addEventListener('click', requestPersistentStorage);
-  DOM.ghSyncBtn.addEventListener('click', () => syncToGitHub(true));
+  DOM.ghSyncBtn.addEventListener('click', () => syncToGitHub(true).catch(() => null));
   DOM.ghRestoreBtn.addEventListener('click', restoreFromGitHub);
   ['ghOwner', 'ghRepo', 'ghBranch', 'ghPath', 'ghToken', 'ghAutoSync'].forEach((id) => {
     DOM[id].addEventListener('input', onGitHubFieldChange);
@@ -251,31 +368,38 @@ function bindEvents() {
     if (!btn) return;
     state.activeRing = btn.dataset.ringId || state.activeRing;
     state.model?.setFocusField(RING_FIELD_MAP[state.activeRing] || '');
+    state.model?.setAccentColor?.(RING_COLORS[state.activeRing] || '#6c8fa9');
     renderHeroRings();
+    renderHeroMeta();
   });
 }
 
+
 async function loadState() {
-  const localSnapshot = safeJsonParse(localStorage.getItem(STORAGE_KEY), null);
-  const idbSnapshot = await idbGet(IDB_SNAPSHOT_KEY).catch(() => null);
-  const snapshot = pickNewestSnapshot(localSnapshot, idbSnapshot) || createDefaultSnapshot();
+  const localSnapshots = V32_STORAGE_KEYS.map((key) => safeJsonParse(localStorage.getItem(key), null)).filter(Boolean);
+  const idbSnapshots = (await Promise.all(V32_IDB_SNAPSHOT_KEYS.map((key) => idbGet(key).catch(() => null)))).filter(Boolean);
+  const snapshot = [...localSnapshots, ...idbSnapshots].reduce((best, current) => pickNewestSnapshot(best, current), null) || createDefaultSnapshot();
   applySnapshot(snapshot);
-  const photoRef = await idbGet(IDB_PHOTO_KEY).catch(() => '');
+  const photoRef = snapshot.photoRefUrl || await idbGet(IDB_PHOTO_KEY).catch(() => '');
   state.photoRefUrl = typeof photoRef === 'string' ? photoRef : '';
+  state.localBackupMeta = await idbGet(V32_IDB_BACKUP_KEY).catch(() => []);
 }
+
 
 function createDefaultSnapshot() {
   return {
-    version: state.version,
+    version: V32_BUILD_VERSION,
     updatedAt: new Date().toISOString(),
     profile: { ...defaultProfile(), bodyFat: 22, focusNote: '' },
     bodyHistory: [],
     logs: {},
     customFoods: [],
-    photoShape: { shoulder: 1, waist: 1, hip: 1, leg: 1, hasPhoto: false },
-    github: { ...DEFAULT_GITHUB },
+    photoShape: { shoulder: 1, chest: 1, waist: 1, hip: 1, arm: 1, leg: 1, hasPhoto: false },
+    preferences: { foodLibrary: 'all', foodNameMode: 'zh' },
+    github: resolveGitHubSnapshot({}),
   };
 }
+
 
 function applySnapshot(snapshot) {
   state.profile = normalizeProfileSnapshot(snapshot.profile);
@@ -284,10 +408,13 @@ function applySnapshot(snapshot) {
   state.customFoods = normalizeCustomFoods(snapshot.customFoods || []);
   state.photoShape = normalizePhotoShape(snapshot.photoShape || {});
   if (typeof snapshot.photoRefUrl === 'string') state.photoRefUrl = snapshot.photoRefUrl;
-  state.github = { ...DEFAULT_GITHUB, ...(snapshot.github || {}) };
+  state.foodLibrary = FOOD_REGION_OPTIONS.has(snapshot.preferences?.foodLibrary) ? snapshot.preferences.foodLibrary : 'all';
+  state.foodNameMode = FOOD_NAME_MODE_OPTIONS.has(snapshot.preferences?.foodNameMode) ? snapshot.preferences.foodNameMode : 'zh';
+  state.github = resolveGitHubSnapshot(snapshot.github || {});
   state.focusMode = inferFocusMode(state.profile);
   state.activeRing = state.focusMode.nutrientIds[0];
 }
+
 
 function normalizeProfileSnapshot(raw = {}) {
   const profile = sanitizeProfile(raw);
@@ -342,16 +469,20 @@ function normalizeLogs(logs) {
 
 function normalizeLogItem(raw) {
   if (!raw || typeof raw !== 'object') return null;
+  const labels = normalizeFoodLabels(raw);
   return {
     id: raw.id || uid('log'),
     createdAt: raw.createdAt || new Date().toISOString(),
-    label: String(raw.label || raw.name || '未命名食品'),
+    label: String(raw.label || raw.name || labels.zh || '未命名食品'),
+    labels,
     grams: finiteOrNull(raw.grams),
     code: String(raw.code || ''),
     nutrients: normalizeNutrientObject(raw.nutrients || {}),
     source: String(raw.source || 'library'),
+    library: String(raw.library || classifyFoodLibrary({ labels })),
   };
 }
+
 
 function normalizeCustomFoods(list) {
   return Array.isArray(list) ? list.map(normalizeCustomFood).filter(Boolean).slice(0, 120) : [];
@@ -361,6 +492,7 @@ function normalizeCustomFood(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const name = String(raw.name || raw.label || raw.n || '').trim();
   if (!name) return null;
+  const labels = buildCustomFoodLabels(name, raw);
   return {
     id: String(raw.id || uid('custom')),
     name,
@@ -368,22 +500,24 @@ function normalizeCustomFood(raw) {
     basis: raw.basis === 'serving' ? 'serving' : raw.basis === '100ml' ? '100ml' : '100g',
     servingSize: finiteOrNull(raw.servingSize),
     customPer100: normalizeNutrientObject(raw.customPer100 || raw.customNutrients || {}),
-    labels: {
-      zh: name,
-      original: name,
-    },
+    labels,
+    library: raw.library || classifyFoodLibrary({ labels }),
   };
 }
+
 
 function normalizePhotoShape(raw = {}) {
   return {
     shoulder: clamp(Number(raw.shoulder) || 1, 0.8, 1.25),
-    waist: clamp(Number(raw.waist) || 1, 0.8, 1.25),
-    hip: clamp(Number(raw.hip) || 1, 0.8, 1.25),
+    chest: clamp(Number(raw.chest) || 1, 0.82, 1.25),
+    waist: clamp(Number(raw.waist) || 1, 0.78, 1.22),
+    hip: clamp(Number(raw.hip) || 1, 0.82, 1.26),
+    arm: clamp(Number(raw.arm) || 1, 0.8, 1.22),
     leg: clamp(Number(raw.leg) || 1, 0.85, 1.2),
     hasPhoto: Boolean(raw.hasPhoto),
   };
 }
+
 
 function normalizeNutrientObject(obj) {
   const out = {};
@@ -420,11 +554,12 @@ function fillFormsFromState() {
   DOM.profileForm.dyslipidemia.checked = Boolean(p.conditions?.dyslipidemia);
   DOM.profileForm.smoker.checked = Boolean(p.smoker);
 
-  const latest = state.bodyHistory[0] || {};
-  fillBodyForm(latest);
+  fillBodyForm(state.bodyHistory[0] || {});
   fillGitHubForm();
   fillPhotoDialog();
+  renderFilterButtons();
 }
+
 
 function fillBodyForm(record = {}) {
   const fields = ['neck', 'shoulder', 'chest', 'underbust', 'waist', 'abdomen', 'hip', 'upperArm', 'forearm', 'thigh', 'calf', 'ankle'];
@@ -435,18 +570,21 @@ function fillBodyForm(record = {}) {
 }
 
 function fillGitHubForm() {
-  DOM.ghOwner.value = state.github.owner || '';
-  DOM.ghRepo.value = state.github.repo || '';
+  DOM.ghOwner.value = state.github.owner || DEFAULT_GITHUB.owner || 'kawhikun';
+  DOM.ghRepo.value = state.github.repo || DEFAULT_GITHUB.repo || 'haochijia';
   DOM.ghBranch.value = state.github.branch || 'main';
   DOM.ghPath.value = state.github.path || 'data/haochijia-user.json';
   DOM.ghToken.value = state.github.token || '';
   DOM.ghAutoSync.checked = Boolean(state.github.autoSync);
 }
 
+
 function fillPhotoDialog() {
   DOM.shapeShoulder.value = Math.round((state.photoShape.shoulder || 1) * 100);
+  DOM.shapeChest.value = Math.round((state.photoShape.chest || 1) * 100);
   DOM.shapeWaist.value = Math.round((state.photoShape.waist || 1) * 100);
   DOM.shapeHip.value = Math.round((state.photoShape.hip || 1) * 100);
+  DOM.shapeArm.value = Math.round((state.photoShape.arm || 1) * 100);
   DOM.shapeLeg.value = Math.round((state.photoShape.leg || 1) * 100);
   if (state.photoRefUrl) {
     DOM.photoPreview.src = state.photoRefUrl;
@@ -455,7 +593,9 @@ function fillPhotoDialog() {
     DOM.photoPreview.hidden = true;
     DOM.photoPreview.removeAttribute('src');
   }
+  renderPhotoPreviewMeta();
 }
+
 
 function renderAll() {
   recomputeState();
@@ -469,11 +609,15 @@ function renderAll() {
   renderCaptureResult();
   renderPhotoRef();
   renderGitHubStatus();
+  renderFilterButtons();
+  renderLocalBackupMeta();
   if (state.model) {
     state.model.setSnapshot(buildModelSnapshot());
     state.model.setFocusField(RING_FIELD_MAP[state.activeRing] || '');
+    state.model.setAccentColor?.(RING_COLORS[state.activeRing] || '#6c8fa9');
   }
 }
+
 
 function recomputeState() {
   state.profile = readProfileForm();
@@ -553,11 +697,14 @@ function buildModelRecord() {
     ankleL: record.ankle,
     ankleR: record.ankle,
     shapeShoulder: state.photoShape.shoulder,
+    shapeChest: state.photoShape.chest,
     shapeWaist: state.photoShape.waist,
     shapeHip: state.photoShape.hip,
+    shapeArm: state.photoShape.arm,
     shapeLeg: state.photoShape.leg,
   };
 }
+
 
 function buildModelSnapshot() {
   const current = buildModelRecord();
@@ -583,11 +730,14 @@ function expandHistoryRecord(record) {
     ankleL: record.ankle,
     ankleR: record.ankle,
     shapeShoulder: state.photoShape.shoulder,
+    shapeChest: state.photoShape.chest,
     shapeWaist: state.photoShape.waist,
     shapeHip: state.photoShape.hip,
+    shapeArm: state.photoShape.arm,
     shapeLeg: state.photoShape.leg,
   };
 }
+
 
 function bodyRecordsSame(a, b) {
   if (!a || !b) return false;
@@ -603,34 +753,52 @@ function activateTab(tab) {
 }
 
 function renderHeroMeta() {
-  DOM.focusModePill.textContent = state.focusMode.label;
-  DOM.focusModeText.textContent = state.focusMode.summary;
+  const platformText = state.platform.key === 'ios' ? 'iPhone 人体舞台' : state.platform.key === 'android' ? 'Android 人体舞台' : '人体舞台';
+  DOM.focusModePill.textContent = `${platformText} · 6 环联动`;
+  DOM.focusModeText.textContent = `${nutrientDisplayName(state.activeRing)} 高亮 · 拖旋 / 缩放 / 双击回正 / 长按身体记录`;
 }
+
+
+function buildHeroRingData() {
+  const targets = state.calc.targets;
+  const dynamicIds = state.focusMode.nutrientIds.slice(3);
+  const baseIds = state.focusMode.nutrientIds.slice(0, 3);
+  const ordered = [...dynamicIds, ...baseIds];
+  return ordered.map((id, index) => {
+    const target = targets[id];
+    const current = Number(state.totals[id] || 0);
+    const progress = progressForTarget(target, current);
+    return {
+      id,
+      focus: index < 3,
+      label: nutrientDisplayName(id),
+      percent: clamp(progress * 100, 0, 199),
+      meta: `${formatCompactNutrient(id, current)} / ${formatCompactNutrient(id, targetValue(target))}`,
+      color: RING_COLORS[id] || '#6c8fa9',
+    };
+  });
+}
+
+
 
 function renderHeroRings() {
   if (!DOM.ringOrbit) return;
-  const ringData = buildRingData();
+  const ringData = buildHeroRingData();
   const rect = DOM.heroStage?.getBoundingClientRect?.() || DOM.ringOrbit.getBoundingClientRect();
   const width = rect.width || 360;
   const height = rect.height || 520;
-  const centerX = width * 0.5;
-  const centerY = height * 0.44;
-  const radius = Math.min(width, height) * (width < 390 ? 0.34 : 0.36);
-  const angles = [-94, -30, 24, 90, 154, 214];
-
+  const points = ringLayoutPoints(width, height);
   DOM.ringOrbit.innerHTML = '';
   ringData.forEach((ring, index) => {
-    const angle = angles[index] * Math.PI / 180;
-    const focus = ring.id === state.activeRing;
-    const size = focus ? (width < 390 ? 96 : 104) : (ring.focus ? (width < 390 ? 90 : 98) : (width < 390 ? 84 : 92));
-    const x = centerX + Math.cos(angle) * radius;
-    const y = centerY + Math.sin(angle) * radius;
+    const point = points[index] || points[points.length - 1];
+    const active = ring.id === state.activeRing;
+    const size = active ? (width < 390 ? 86 : 94) : (ring.focus ? (width < 390 ? 80 : 88) : (width < 390 ? 76 : 82));
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = `nutri-ring${ring.focus ? ' is-focus' : ''}${focus ? ' is-active' : ''}`;
+    button.className = `nutri-ring${ring.focus ? ' is-focus' : ''}${active ? ' is-active' : ''}`;
     button.dataset.ringId = ring.id;
-    button.style.left = `${x}px`;
-    button.style.top = `${y}px`;
+    button.style.left = `${point.x}px`;
+    button.style.top = `${point.y}px`;
     button.style.transform = 'translate(-50%, -50%)';
     button.style.width = `${size}px`;
     button.style.height = `${size}px`;
@@ -647,6 +815,7 @@ function renderHeroRings() {
     DOM.ringOrbit.appendChild(button);
   });
 }
+
 
 function buildRingData() {
   const targets = state.calc.targets;
@@ -669,7 +838,7 @@ function buildRingData() {
 
 function renderSuggestions() {
   const cards = buildSuggestionCards();
-  DOM.suggestionSummary.textContent = `${state.focusMode.label} · ${cards.length} 条建议`;
+  DOM.suggestionSummary.textContent = `${state.focusMode.label} · ${cards.length} 条重点建议`;
   if (!cards.length) {
     DOM.suggestionCards.innerHTML = '<div class="empty-state">暂无建议</div>';
     return;
@@ -682,6 +851,7 @@ function renderSuggestions() {
     </article>
   `).join('');
 }
+
 
 function buildSuggestionCards() {
   const dynamicIds = state.focusMode.nutrientIds.slice(3);
@@ -709,12 +879,14 @@ function renderBodyHistory() {
     <article class="history-item">
       <strong>${escapeHtml(formatDateTime(item.recordedAt))}</strong>
       <div class="history-meta">${escapeHtml(bodyRecordSummary(item))}</div>
-      <button type="button" class="ghost-btn tiny-btn" data-load-body-index="${index}">载入</button>
+      <button type="button" class="ghost-btn tiny-btn" data-load-body-index="${index}">载入到模型</button>
     </article>
   `).join('');
 }
 
+
 function renderFoodSearchResults() {
+  renderFilterButtons();
   if (!state.searchQuery.trim()) {
     DOM.foodSearchResults.innerHTML = renderSearchPlaceholder();
     return;
@@ -730,32 +902,48 @@ function renderFoodSearchResults() {
   const amount = clamp(Number(DOM.foodAmountInput.value) || 100, 1, 3000);
   DOM.foodSearchResults.innerHTML = state.searchResults.map((food, index) => {
     const per100 = nutrientsForFood(food);
+    const secondary = foodSecondaryName(food);
+    const tags = [
+      `<span class="food-tag ${food.library === 'cn' ? 'cn' : 'intl'}">${libraryTagLabel(food.library)}</span>`,
+      food.customPer100 ? '<span class="food-tag custom">自定义</span>' : '',
+      food.code ? `<span class="food-tag">${escapeHtml(food.code)}</span>` : '',
+    ].filter(Boolean).join('');
     return `
       <article class="food-item">
         <strong>${escapeHtml(foodDisplayName(food))}</strong>
-        <div class="food-meta">每 100：${escapeHtml(formatCompactNutrient('kcal', per100.kcal || 0))} · ${escapeHtml(formatCompactNutrient('protein', per100.protein || 0))} · ${escapeHtml(formatCompactNutrient('carbs', per100.carbs || 0))} · ${escapeHtml(formatCompactNutrient('fat', per100.fat || 0))}</div>
+        <div class="food-meta">
+          ${secondary ? `<div class="history-meta">${escapeHtml(secondary)}</div>` : ''}
+          <div>每 100：${escapeHtml(formatCompactNutrient('kcal', per100.kcal || 0))} · ${escapeHtml(formatCompactNutrient('protein', per100.protein || 0))} · ${escapeHtml(formatCompactNutrient('carbs', per100.carbs || 0))} · ${escapeHtml(formatCompactNutrient('fat', per100.fat || 0))}</div>
+          <div class="food-tags">${tags}</div>
+        </div>
         <div class="food-actions">
           <button type="button" class="primary-btn tiny-btn" data-add-food-index="${index}" data-add-food-amount="${amount}">加入 ${amount}g</button>
           ${food.code ? `<button type="button" class="ghost-btn tiny-btn" data-search-code="${escapeHtml(food.code)}">${escapeHtml(food.code)}</button>` : ''}
         </div>
-      </article>
-    `;
+      </article>`;
   }).join('');
 }
 
+
 function renderSearchPlaceholder() {
   const recent = recentFoods(6);
-  if (!recent.length) return '<div class="empty-state">输入食品名、品牌或条码</div>';
-  return recent.map((food, index) => `
-    <article class="food-item">
-      <strong>${escapeHtml(foodDisplayName(food))}</strong>
-      <div class="food-meta">最近使用</div>
-      <div class="food-actions">
-        <button type="button" class="ghost-btn tiny-btn" data-recent-food-index="${index}">再次加入</button>
-      </div>
-    </article>
-  `).join('');
+  if (!recent.length) {
+    const summary = state.foodBankLoaded.cn || state.foodBankLoaded.intl ? `\n${foodBankSummaryText()}` : '';
+    return `<div class="empty-state">输入食品名 / EN / 原始名 / 品牌 / 条码${summary ? `<br><span class="history-meta">${escapeHtml(summary)}</span>` : ''}</div>`;
+  }
+  return recent.map((food, index) => {
+    const secondary = foodSecondaryName(food);
+    return `
+      <article class="food-item">
+        <strong>${escapeHtml(foodDisplayName(food))}</strong>
+        <div class="food-meta">${secondary ? `<div class="history-meta">${escapeHtml(secondary)}</div>` : '最近使用'}</div>
+        <div class="food-actions">
+          <button type="button" class="ghost-btn tiny-btn" data-recent-food-index="${index}">再次加入</button>
+        </div>
+      </article>`;
+  }).join('');
 }
+
 
 function renderProgressList() {
   const ids = Array.from(new Set([...state.focusMode.nutrientIds, 'kcal', 'fiber', 'water', 'sodium'])).filter((id) => state.calc.targets[id]);
@@ -777,22 +965,32 @@ function renderProgressList() {
   }).join('');
 }
 
+function logItemDisplayName(item) {
+  return foodDisplayNameForMode(item, state.foodNameMode);
+}
+
+
+
 function renderLogList() {
   const items = getDayLog(state.activeDate).items;
   if (!items.length) {
     DOM.logList.innerHTML = '<div class="empty-state">今天还没有记录</div>';
     return;
   }
-  DOM.logList.innerHTML = items.map((item, index) => `
-    <article class="log-item">
-      <strong>${escapeHtml(item.label)}</strong>
-      <div class="log-meta">${escapeHtml(formatTime(item.createdAt))}${item.grams ? ` · ${item.grams}g` : ''} · ${escapeHtml(formatCompactNutrient('kcal', item.nutrients.kcal || 0))}</div>
-      <div class="log-actions">
-        <button type="button" class="ghost-btn tiny-btn" data-remove-log-index="${index}">删除</button>
-      </div>
-    </article>
-  `).join('');
+  DOM.logList.innerHTML = items.map((item, index) => {
+    const secondary = foodSecondaryName(item);
+    return `
+      <article class="log-item">
+        <strong>${escapeHtml(logItemDisplayName(item))}</strong>
+        ${secondary ? `<div class="history-meta">${escapeHtml(secondary)}</div>` : ''}
+        <div class="log-meta">${escapeHtml(formatTime(item.createdAt))}${item.grams ? ` · ${item.grams}g` : ''} · ${escapeHtml(formatCompactNutrient('kcal', item.nutrients.kcal || 0))}</div>
+        <div class="log-actions">
+          <button type="button" class="ghost-btn tiny-btn" data-remove-log-index="${index}">删除</button>
+        </div>
+      </article>`;
+  }).join('');
 }
+
 
 function renderCaptureResult() {
   if (!state.captureParsed) {
@@ -811,6 +1009,7 @@ function renderCaptureResult() {
   `).join('');
 }
 
+
 function renderPhotoRef() {
   if (state.photoRefUrl) {
     const safeUrl = String(state.photoRefUrl);
@@ -824,8 +1023,16 @@ function renderPhotoRef() {
 
 function renderGitHubStatus() {
   const ok = state.github.owner && state.github.repo && state.github.path;
-  DOM.githubStatus.textContent = ok ? `${state.github.owner}/${state.github.repo}` : '未配置';
+  if (!ok) {
+    DOM.githubStatus.textContent = '未配置';
+    return;
+  }
+  const synced = state.github.lastSyncStatus === 'success' && state.github.lastSyncAt
+    ? `已同步 ${formatTime(state.github.lastSyncAt)}`
+    : '未同步';
+  DOM.githubStatus.textContent = `${state.github.owner}/${state.github.repo} · ${synced}`;
 }
+
 
 function onProfileInput() {
   state.profile = {
@@ -846,70 +1053,70 @@ function onFoodSearchInput() {
   state.searchQuery = String(DOM.foodSearchInput.value || '').trim();
   if (!state.searchQuery) {
     state.searchResults = [];
-    DOM.foodSearchStatus.textContent = '待输入';
+    DOM.foodSearchStatus.textContent = state.foodBankLoaded.cn || state.foodBankLoaded.intl ? foodBankSummaryText() : '待输入';
     renderFoodSearchResults();
     return;
   }
   ensureFoodsLoaded().then(() => {
     state.searchResults = searchFoods(state.searchQuery).slice(0, FOOD_SEARCH_LIMIT);
-    DOM.foodSearchStatus.textContent = `找到 ${state.searchResults.length} 项`;
+    DOM.foodSearchStatus.textContent = `找到 ${state.searchResults.length} 项 · ${foodBankSummaryText()}`;
     renderFoodSearchResults();
   }).catch((error) => {
     DOM.foodSearchStatus.textContent = `食品库失败：${error.message}`;
   });
 }
 
+
 async function ensureFoodsLoaded() {
-  if (state.foodsLoaded) return state.foods;
-  if (state.foodsPromise) return state.foodsPromise;
+  const libs = activeFoodLibraries();
   state.foodsLoading = true;
-  DOM.foodSearchStatus.textContent = '食品库加载中…';
-  state.foodsPromise = fetch('./data/foods.min.json', { cache: 'force-cache' })
-    .then((response) => {
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return response.json();
-    })
-    .then((foods) => {
-      state.foods = Array.isArray(foods) ? foods.map(prepareFood) : [];
-      state.foodsLoaded = true;
-      state.foodsLoading = false;
-      DOM.foodSearchStatus.textContent = `食品库 ${state.foods.length.toLocaleString('zh-CN')} 条`;
-      return state.foods;
-    })
-    .catch((error) => {
-      state.foodsLoading = false;
-      state.foodsPromise = null;
-      throw error;
-    });
-  return state.foodsPromise;
+  if (DOM.foodSearchStatus) DOM.foodSearchStatus.textContent = '食品库加载中…';
+  try {
+    await Promise.all(libs.map((lib) => ensureFoodBankLoaded(lib)));
+    mergeFoodBanks();
+    state.foodsLoading = false;
+    if (DOM.foodSearchStatus) DOM.foodSearchStatus.textContent = foodBankSummaryText();
+    return state.foods;
+  } catch (error) {
+    state.foodsLoading = false;
+    throw error;
+  }
 }
 
+
 function requestIdleLoadFoods() {
-  const run = () => ensureFoodsLoaded().catch(() => null);
+  const run = async () => {
+    const first = state.foodLibrary === 'intl' ? 'intl' : 'cn';
+    const second = first === 'cn' ? 'intl' : 'cn';
+    await ensureFoodBankLoaded(first).catch(() => null);
+    window.setTimeout(() => ensureFoodBankLoaded(second).catch(() => null), 1200);
+  };
   if ('requestIdleCallback' in window) window.requestIdleCallback(run, { timeout: 2400 });
   else window.setTimeout(run, 900);
 }
 
-function prepareFood(food) {
-  const name = foodDisplayName(food);
-  const original = String(food.labels?.original || food.n || '').trim();
-  food._displayName = name;
-  food._search = normalizeText([name, original, food.code || food.c || '', food.z || '', food.labels?.en || '', food.labels?.es || ''].join(' '));
-  food.code = food.code || food.c || '';
+
+function prepareFood(food, libraryHint = '') {
+  const labels = normalizeFoodLabels(food);
+  food.labels = { ...(food.labels || {}), ...labels };
+  food.code = String(food.code || food.c || '').trim();
+  food.library = libraryHint || food.library || classifyFoodLibrary(food);
+  food._displayName = labels.zh;
+  food._search = buildFoodSearchText(food);
   return food;
 }
+
 
 function searchFoods(query) {
   const q = normalizeText(query);
   const isCode = /^\d{6,14}$/.test(q);
   const tokens = q.split(/\s+/).filter(Boolean);
   const results = [];
-  const pool = [...state.customFoods.map(prepareFood), ...state.foods];
-  for (const food of pool) {
-    const hay = food._search || normalizeText(foodDisplayName(food));
+  for (const food of foodPool()) {
+    const hay = food._search || buildFoodSearchText(food);
     let score = 0;
     if (isCode) {
-      if ((food.code || '').startsWith(q)) score += food.code === q ? 120 : 70;
+      if ((food.code || '').startsWith(q)) score += food.code === q ? 140 : 90;
       else continue;
     } else {
       if (hay.includes(q)) score += 40;
@@ -917,16 +1124,20 @@ function searchFoods(query) {
       for (const token of tokens) {
         if (hay.includes(token)) {
           matched += 1;
-          score += normalizeText(foodDisplayName(food)).startsWith(token) ? 12 : 6;
+          score += normalizeText(foodDisplayNameForMode(food, state.foodNameMode)).startsWith(token) ? 18 : 8;
         }
       }
       if (matched < tokens.length) continue;
+      if (normalizeText(foodDisplayNameForMode(food, state.foodNameMode)).startsWith(q)) score += 20;
+      if (normalizeText(foodDisplayNameForMode(food, 'zh')).startsWith(q)) score += 10;
     }
-    if (food.customPer100) score += 6;
+    if (food.customPer100) score += 8;
+    if (food.library === state.foodLibrary) score += 4;
     results.push({ food, score });
   }
   return results.sort((a, b) => b.score - a.score).slice(0, FOOD_SEARCH_LIMIT).map((item) => item.food);
 }
+
 
 function recentFoods(limit = 6) {
   const seen = new Map();
@@ -966,21 +1177,25 @@ function onFoodResultsClick(event) {
 
 function addFoodToToday(food, grams) {
   const nutrients = foodNutrientsForAmount(food, grams);
+  const labels = normalizeFoodLabels(food);
   const item = {
     id: uid('log'),
     createdAt: new Date().toISOString(),
-    label: foodDisplayName(food),
+    label: labels.zh || labels.original,
+    labels,
     grams: round1(grams),
     code: food.code || '',
     nutrients,
     source: food.customPer100 ? 'custom' : 'library',
+    library: food.library || classifyFoodLibrary(food),
   };
   getDayLog(state.activeDate).items.unshift(item);
   getDayLog(state.activeDate).items = getDayLog(state.activeDate).items.slice(0, MAX_LOG_ITEMS_PER_DAY);
   persistState({ syncEligible: true });
   renderAll();
-  DOM.foodSearchStatus.textContent = `${item.label} 已加入`;
+  DOM.foodSearchStatus.textContent = `${foodDisplayName(food)} 已加入`;
 }
+
 
 function nutrientsForFood(food) {
   return food.customPer100 ? food.customPer100 : normalizedFoodNutrients(food);
@@ -1208,8 +1423,13 @@ async function runBarcodeSearch() {
       return;
     }
     DOM.captureStatus.textContent = `条码 ${code}`;
-    await ensureFoodsLoaded();
-    const hit = state.customFoods.find((food) => food.code === code) || state.foods.find((food) => String(food.code || '') === String(code));
+    await ensureAllFoodBanksLoaded();
+    const allFoods = [
+      ...state.customFoods.map((food) => prepareFood(food, food.library || classifyFoodLibrary(food))),
+      ...(state.foodBanks.cn || []),
+      ...(state.foodBanks.intl || []),
+    ];
+    const hit = allFoods.find((food) => String(food.code || '') === String(code));
     if (hit) {
       state.captureParsed = {
         name: foodDisplayName(hit),
@@ -1234,6 +1454,7 @@ async function runBarcodeSearch() {
     DOM.captureStatus.textContent = `条码失败：${error.message}`;
   }
 }
+
 
 async function runOcrSearch() {
   const file = DOM.captureInput.files?.[0];
@@ -1300,6 +1521,7 @@ function saveCaptureFoodToLibrary() {
   const basis = DOM.captureBasis.value;
   const servingSize = Number(DOM.captureServingSize.value) || null;
   const per100 = convertParsedToPer100(state.captureParsed.nutrients || {}, basis, servingSize);
+  const labels = state.captureParsed.sourceFood ? normalizeFoodLabels(state.captureParsed.sourceFood) : buildCustomFoodLabels(name);
   const customFood = normalizeCustomFood({
     id: uid('custom'),
     name,
@@ -1307,6 +1529,8 @@ function saveCaptureFoodToLibrary() {
     basis: servingSize ? '100g' : basis,
     servingSize,
     customPer100: per100,
+    labels,
+    library: state.foodLibrary === 'all' ? classifyFoodLibrary({ labels }) : state.foodLibrary,
   });
   if (!customFood) return;
   state.customFoods = [customFood, ...state.customFoods.filter((item) => item.name !== customFood.name)].slice(0, 120);
@@ -1316,6 +1540,7 @@ function saveCaptureFoodToLibrary() {
   renderAll();
   DOM.captureStatus.textContent = '已存入食品库';
 }
+
 
 function convertParsedToPer100(nutrients, basis, servingSize) {
   if (basis === '100g' || basis === '100ml') return { ...nutrients };
@@ -1344,29 +1569,44 @@ function onPhotoSelected() {
 }
 
 function renderPhotoPreviewMeta() {
-  // Intentionally empty: sliders update live when applied.
+  const values = {
+    shoulder: DOM.shapeShoulder.value,
+    chest: DOM.shapeChest.value,
+    waist: DOM.shapeWaist.value,
+    hip: DOM.shapeHip.value,
+    arm: DOM.shapeArm.value,
+    leg: DOM.shapeLeg.value,
+  };
+  DOM.photoShapeMeta.textContent = state.photoRefUrl
+    ? `6 维塑形 · 肩 ${values.shoulder}% · 胸 ${values.chest}% · 腰 ${values.waist}% · 臀 ${values.hip}% · 肢 ${values.arm}% · 腿 ${values.leg}%`
+    : '上传正面全身照后会先自动估测，再保留 6 维手动微调。';
 }
 
+
 function resetPhotoShape() {
-  state.photoShape = { shoulder: 1, waist: 1, hip: 1, leg: 1, hasPhoto: Boolean(state.photoRefUrl) };
+  state.photoShape = { shoulder: 1, chest: 1, waist: 1, hip: 1, arm: 1, leg: 1, hasPhoto: Boolean(state.photoRefUrl) };
   fillPhotoDialog();
   renderAll();
 }
 
+
 function applyPhotoShape() {
   state.photoShape.shoulder = clamp(Number(DOM.shapeShoulder.value) / 100 || 1, 0.8, 1.25);
-  state.photoShape.waist = clamp(Number(DOM.shapeWaist.value) / 100 || 1, 0.8, 1.25);
-  state.photoShape.hip = clamp(Number(DOM.shapeHip.value) / 100 || 1, 0.8, 1.25);
+  state.photoShape.chest = clamp(Number(DOM.shapeChest.value) / 100 || 1, 0.82, 1.25);
+  state.photoShape.waist = clamp(Number(DOM.shapeWaist.value) / 100 || 1, 0.78, 1.22);
+  state.photoShape.hip = clamp(Number(DOM.shapeHip.value) / 100 || 1, 0.82, 1.26);
+  state.photoShape.arm = clamp(Number(DOM.shapeArm.value) / 100 || 1, 0.8, 1.22);
   state.photoShape.leg = clamp(Number(DOM.shapeLeg.value) / 100 || 1, 0.85, 1.2);
   state.photoShape.hasPhoto = Boolean(state.photoRefUrl);
-  DOM.photoDialog.close();
+  closeDialogSafe(DOM.photoDialog);
   persistState({ syncEligible: false });
   renderAll();
 }
 
+
 function onGitHubFieldChange() {
-  state.github.owner = String(DOM.ghOwner.value || '').trim();
-  state.github.repo = String(DOM.ghRepo.value || '').trim();
+  state.github.owner = String(DOM.ghOwner.value || '').trim() || DEFAULT_GITHUB.owner || 'kawhikun';
+  state.github.repo = String(DOM.ghRepo.value || '').trim() || DEFAULT_GITHUB.repo || 'haochijia';
   state.github.branch = String(DOM.ghBranch.value || '').trim() || 'main';
   state.github.path = String(DOM.ghPath.value || '').trim() || 'data/haochijia-user.json';
   state.github.token = String(DOM.ghToken.value || '').trim();
@@ -1375,10 +1615,24 @@ function onGitHubFieldChange() {
   renderGitHubStatus();
 }
 
+
 function exportAllData() {
   const snapshot = makeSnapshot({ includeSecrets: false, includePhoto: true });
-  downloadJson(snapshot, `haochijia-core-backup-${compactDateTime()}.json`);
+  snapshot.version = V32_BUILD_VERSION;
+  snapshot.exportMeta = {
+    exportedAt: new Date().toISOString(),
+    platform: state.platform.key,
+    bodyRecords: state.bodyHistory.length,
+    logDays: Object.keys(state.logs || {}).length,
+    customFoods: state.customFoods.length,
+    foodBanksLoaded: {
+      cn: Boolean(state.foodBankLoaded?.cn),
+      intl: Boolean(state.foodBankLoaded?.intl),
+    },
+  };
+  downloadJson(snapshot, `haochijia-complete-backup-${compactDateTime()}.json`);
 }
+
 
 function exportBodyCsv() {
   const header = ['recordedAt', 'heightCm', 'weightKg', 'bodyFat', 'neck', 'shoulder', 'chest', 'underbust', 'waist', 'abdomen', 'hip', 'upperArm', 'forearm', 'thigh', 'calf', 'ankle'];
@@ -1482,13 +1736,14 @@ async function requestPersistentStorage() {
   DOM.persistStatus.textContent = granted ? '更稳保存已开启' : '浏览器未授予';
 }
 
+
 async function updatePersistStatus() {
   if (!navigator.storage?.persisted) {
-    DOM.persistStatus.textContent = '本地已保存';
+    DOM.persistStatus.textContent = 'localStorage + IndexedDB 已开启';
     return false;
   }
   state.persistGranted = await navigator.storage.persisted();
-  DOM.persistStatus.textContent = state.persistGranted ? '更稳保存已开启' : '本地已保存';
+  DOM.persistStatus.textContent = state.persistGranted ? '本地三重保存已开启' : 'localStorage + IndexedDB 已开启';
   return state.persistGranted;
 }
 
@@ -1496,18 +1751,23 @@ async function syncToGitHub(manual = false) {
   try {
     const config = readGitHubConfig();
     ensureGitHubConfig(config, true);
-    const snapshot = makeSnapshot({ includeSecrets: false, includePhoto: false });
+    const snapshot = makeSnapshot({ includeSecrets: false, includePhoto: true });
     const existing = await githubReadFile(config).catch((error) => {
       if (error.status === 404) return null;
       throw error;
     });
     await githubWriteFile(config, snapshot, existing?.sha || '');
-    DOM.githubStatus.textContent = 'GitHub 已同步';
+    state.github.lastSyncAt = new Date().toISOString();
+    state.github.lastSyncStatus = 'success';
+    DOM.githubStatus.textContent = `已同步 ${formatTime(state.github.lastSyncAt)}`;
+    persistState({ syncEligible: false });
   } catch (error) {
+    state.github.lastSyncStatus = error.message;
     DOM.githubStatus.textContent = `GitHub 失败：${error.message}`;
     if (manual) throw error;
   }
 }
+
 
 async function restoreFromGitHub() {
   try {
@@ -1517,11 +1777,14 @@ async function restoreFromGitHub() {
     if (!existing?.content) throw new Error('云端没有数据');
     const json = decodeBase64Unicode(existing.content);
     importJsonSnapshot(json, 'all');
+    state.github.lastSyncStatus = 'success';
     DOM.githubStatus.textContent = '已从 GitHub 恢复';
   } catch (error) {
+    state.github.lastSyncStatus = error.message;
     DOM.githubStatus.textContent = `恢复失败：${error.message}`;
   }
 }
+
 
 function scheduleGitHubSync() {
   if (!state.github.autoSync) return;
@@ -1531,13 +1794,14 @@ function scheduleGitHubSync() {
 
 function readGitHubConfig() {
   return {
-    owner: String(state.github.owner || '').trim(),
-    repo: String(state.github.repo || '').trim(),
+    owner: String(state.github.owner || DEFAULT_GITHUB.owner || 'kawhikun').trim() || 'kawhikun',
+    repo: String(state.github.repo || DEFAULT_GITHUB.repo || 'haochijia').trim() || 'haochijia',
     branch: String(state.github.branch || 'main').trim() || 'main',
     path: String(state.github.path || 'data/haochijia-user.json').trim() || 'data/haochijia-user.json',
     token: String(state.github.token || '').trim(),
   };
 }
+
 
 function ensureGitHubConfig(config, requireWrite) {
   if (!config.owner || !config.repo || !config.path) throw new Error('owner / repo / path 未填');
@@ -1586,16 +1850,26 @@ async function githubWriteFile(config, data, sha = '') {
 
 function persistState({ syncEligible = false } = {}) {
   const snapshot = makeSnapshot({ includeSecrets: true, includePhoto: false });
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-  idbSet(IDB_SNAPSHOT_KEY, snapshot).catch(() => null);
+  V32_STORAGE_KEYS.forEach((key) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(snapshot));
+    } catch {
+      // Ignore quota errors here; IndexedDB remains the primary backup mirror.
+    }
+  });
+  V32_IDB_SNAPSHOT_KEYS.forEach((key) => idbSet(key, snapshot).catch(() => null));
   if (state.photoRefUrl) idbSet(IDB_PHOTO_KEY, state.photoRefUrl).catch(() => null);
   else idbSet(IDB_PHOTO_KEY, '').catch(() => null);
-  if (syncEligible) scheduleGitHubSync();
+  if (syncEligible) {
+    pushLocalBackup(snapshot).catch(() => null);
+    scheduleGitHubSync();
+  }
 }
+
 
 function makeSnapshot({ includeSecrets = true, includePhoto = false } = {}) {
   const snapshot = {
-    version: state.version,
+    version: V32_BUILD_VERSION,
     updatedAt: new Date().toISOString(),
     profile: {
       ...readProfileForm(),
@@ -1606,18 +1880,25 @@ function makeSnapshot({ includeSecrets = true, includePhoto = false } = {}) {
     logs: state.logs,
     customFoods: state.customFoods,
     photoShape: state.photoShape,
+    preferences: {
+      foodLibrary: state.foodLibrary,
+      foodNameMode: state.foodNameMode,
+    },
     github: {
       owner: state.github.owner,
       repo: state.github.repo,
       branch: state.github.branch,
       path: state.github.path,
       autoSync: state.github.autoSync,
+      lastSyncAt: state.github.lastSyncAt || '',
+      lastSyncStatus: state.github.lastSyncStatus || '',
       ...(includeSecrets ? { token: state.github.token } : {}),
     },
   };
   if (includePhoto && state.photoRefUrl) snapshot.photoRefUrl = state.photoRefUrl;
   return snapshot;
 }
+
 
 function detectPlatform() {
   const ua = navigator.userAgent || '';
@@ -1704,8 +1985,9 @@ function parseCsvLine(line) {
 }
 
 function foodDisplayName(food) {
-  return String(food?.name || food?.labels?.zh || food?.z || food?._displayName || food?.labels?.original || food?.n || '未命名食品');
+  return foodDisplayNameForMode(food, state.foodNameMode);
 }
+
 
 function normalizeText(text) {
   return String(text || '').toLowerCase().replace(/[\u0300-\u036f]/g, '').replace(/[，。；：、()（）/_-]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -1714,6 +1996,428 @@ function normalizeText(text) {
 function hasKeyword(text, keywords) {
   return keywords.some((keyword) => text.includes(normalizeText(keyword)));
 }
+
+function resolveGitHubSnapshot(raw = {}) {
+  return {
+    owner: String(raw.owner || DEFAULT_GITHUB.owner || 'kawhikun').trim() || 'kawhikun',
+    repo: String(raw.repo || DEFAULT_GITHUB.repo || 'haochijia').trim() || 'haochijia',
+    branch: String(raw.branch || DEFAULT_GITHUB.branch || 'main').trim() || 'main',
+    path: String(raw.path || DEFAULT_GITHUB.path || 'data/haochijia-user.json').trim() || 'data/haochijia-user.json',
+    token: String(raw.token || '').trim(),
+    autoSync: Boolean(raw.autoSync),
+    lastSyncAt: String(raw.lastSyncAt || ''),
+    lastSyncStatus: String(raw.lastSyncStatus || ''),
+  };
+}
+
+
+
+function normalizeFoodLabels(raw) {
+  const source = raw?.labels ? raw.labels : raw || {};
+  const name = String(raw?.name || raw?.label || raw?.z || raw?.n || '').trim();
+  const original = String(source.original || raw?.n || raw?.name || raw?.label || name || '').trim();
+  const zh = String(source.zh || raw?.z || raw?.name || raw?.label || original || '').trim();
+  const explicitEn = String(source.en || '').trim();
+  const en = explicitEn || (/[A-Za-z]/.test(original) ? original : (/[A-Za-z]/.test(name) ? name : ''));
+  return {
+    zh: zh || original || en || name || '未命名食品',
+    en: en || original || zh || name || 'Unnamed food',
+    original: original || zh || en || name || 'Unnamed food',
+  };
+}
+
+
+
+function buildCustomFoodLabels(name, raw = {}) {
+  const labels = normalizeFoodLabels({ ...raw, name, label: name, labels: raw.labels || {} });
+  if (!labels.en && /[A-Za-z]/.test(name)) labels.en = name;
+  return labels;
+}
+
+
+
+function classifyFoodLibrary(food) {
+  const labels = normalizeFoodLabels(food);
+  const raw = `${labels.original} ${food?.b || ''} ${food?.g || ''}`;
+  if (/[ぁ-ゟ゠-ヿㇰ-ㇿ]/.test(raw) || /[\uac00-\ud7af]/.test(raw)) return 'intl';
+  if (/[\u4e00-\u9fff]/.test(raw)) return 'cn';
+  return 'intl';
+}
+
+
+
+function foodDisplayNameForMode(food, mode = state.foodNameMode) {
+  const labels = normalizeFoodLabels(food);
+  const safeMode = FOOD_NAME_MODE_OPTIONS.has(mode) ? mode : 'zh';
+  return String(labels[safeMode] || labels.zh || labels.original || labels.en || food?.name || food?.n || '未命名食品');
+}
+
+
+
+function foodSecondaryName(food, mode = state.foodNameMode) {
+  return foodAltNames(food, mode).join(' / ');
+}
+
+
+
+function buildFoodSearchText(food) {
+  const labels = normalizeFoodLabels(food);
+  return normalizeText([
+    labels.zh,
+    labels.en,
+    labels.original,
+    food?.code || food?.c || '',
+    food?.b || '',
+    food?.g || '',
+    food?.q || '',
+    food?.z || '',
+    food?.n || '',
+    food?.labels?.es || '',
+  ].join(' '));
+}
+
+
+
+function foodPool() {
+  const libs = activeFoodLibraries();
+  const customFoods = state.customFoods
+    .map((food) => prepareFood(food, food.library || classifyFoodLibrary(food)))
+    .filter((food) => state.foodLibrary === 'all' || food.library === state.foodLibrary);
+  const libraryFoods = libs.flatMap((lib) => state.foodBanks?.[lib] || []);
+  return [...customFoods, ...libraryFoods];
+}
+
+
+
+function renderFilterButtons() {
+  DOM.foodRegionGroup?.querySelectorAll('[data-food-region]').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.foodRegion === state.foodLibrary);
+  });
+  DOM.foodLanguageGroup?.querySelectorAll('[data-food-lang]').forEach((btn) => {
+    btn.classList.toggle('is-active', btn.dataset.foodLang === state.foodNameMode);
+  });
+}
+
+
+
+function renderLocalBackupMeta() {
+  if (!DOM.localBackupMeta) return;
+  const list = Array.isArray(state.localBackupMeta) ? state.localBackupMeta : [];
+  if (!list.length) {
+    DOM.localBackupMeta.textContent = '本地三重兜底：localStorage + IndexedDB + 最近备份';
+    return;
+  }
+  DOM.localBackupMeta.textContent = `本地三重兜底 · 最近 ${list.length} 份 · 最新 ${formatDateTime(list[0].updatedAt)}`;
+}
+
+
+
+function ringLayoutPoints(width, height) {
+  const small = width < 392;
+  const midY = small ? 0.42 : 0.41;
+  return [
+    { x: width * (small ? 0.18 : 0.17), y: height * 0.17 },
+    { x: width * (small ? 0.82 : 0.83), y: height * 0.17 },
+    { x: width * (small ? 0.90 : 0.91), y: height * midY },
+    { x: width * (small ? 0.82 : 0.83), y: height * 0.77 },
+    { x: width * (small ? 0.18 : 0.17), y: height * 0.77 },
+    { x: width * (small ? 0.10 : 0.09), y: height * midY },
+  ];
+}
+
+
+
+function activeFoodLibraries() {
+  return state.foodLibrary === 'cn' ? ['cn'] : state.foodLibrary === 'intl' ? ['intl'] : ['cn', 'intl'];
+}
+
+
+
+function libraryTagLabel(library) {
+  return library === 'cn' ? '中文库' : '国际库';
+}
+
+
+
+function foodBankSummaryText() {
+  const cnCount = state.foodBankCounts?.cn || 0;
+  const intlCount = state.foodBankCounts?.intl || 0;
+  if (state.foodLibrary === 'cn') return `中文库 ${cnCount.toLocaleString('zh-CN')} 条`;
+  if (state.foodLibrary === 'intl') return `国际库 ${intlCount.toLocaleString('zh-CN')} 条`;
+  return `双食品库 · 中文 ${cnCount.toLocaleString('zh-CN')} · 国际 ${intlCount.toLocaleString('zh-CN')}`;
+}
+
+
+
+function mergeFoodBanks() {
+  const libs = activeFoodLibraries();
+  state.foods = libs.flatMap((lib) => state.foodBanks?.[lib] || []);
+  state.foodsLoaded = libs.every((lib) => Boolean(state.foodBankLoaded?.[lib]));
+  return state.foods;
+}
+
+
+
+async function ensureFoodBankLoaded(library) {
+  const files = V32_FOOD_BANK_FILES[library];
+  if (!files?.length) return [];
+  if (state.foodBankLoaded?.[library]) return state.foodBanks[library] || [];
+  if (state.foodBankPromises?.[library]) return state.foodBankPromises[library];
+  state.foodBankPromises[library] = (async () => {
+    const foods = [];
+    for (let i = 0; i < files.length; i += 1) {
+      if (DOM.foodSearchStatus) {
+        DOM.foodSearchStatus.textContent = `${libraryTagLabel(library)}加载中 · ${i + 1}/${files.length}`;
+      }
+      const response = await fetch(files[i], { cache: 'force-cache' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const chunk = await response.json();
+      const list = Array.isArray(chunk) ? chunk : [];
+      foods.push(...list.map((food) => prepareFood(food, library)));
+    }
+    state.foodBanks[library] = foods;
+    state.foodBankCounts[library] = foods.length;
+    state.foodBankLoaded[library] = true;
+    state.foodBankPromises[library] = null;
+    mergeFoodBanks();
+    return foods;
+  })().catch((error) => {
+    state.foodBankPromises[library] = null;
+    throw error;
+  });
+  return state.foodBankPromises[library];
+}
+
+
+
+async function ensureAllFoodBanksLoaded() {
+  await Promise.all(['cn', 'intl'].map((lib) => ensureFoodBankLoaded(lib)));
+  mergeFoodBanks();
+  return [...(state.foodBanks.cn || []), ...(state.foodBanks.intl || [])];
+}
+
+
+
+function foodAltNames(food, mode = state.foodNameMode) {
+  const labels = normalizeFoodLabels(food);
+  const primary = normalizeText(foodDisplayNameForMode(food, mode));
+  const candidates = mode === 'zh'
+    ? [labels.en, labels.original]
+    : mode === 'en'
+      ? [labels.zh, labels.original]
+      : [labels.zh, labels.en];
+  const out = [];
+  candidates.forEach((value) => {
+    const text = String(value || '').trim();
+    if (!text) return;
+    if (normalizeText(text) === primary) return;
+    if (out.some((item) => normalizeText(item) === normalizeText(text))) return;
+    out.push(text);
+  });
+  return out.slice(0, 2);
+}
+
+
+
+function loadImageSource(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('图片读取失败'));
+    img.src = src;
+  });
+}
+
+
+
+async function estimatePhotoShapeFromDataUrl(dataUrl) {
+  const img = await loadImageSource(dataUrl);
+  const width = 240;
+  const height = Math.max(360, Math.round((img.naturalHeight || img.height || 1) / (img.naturalWidth || img.width || 1) * width));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return null;
+  ctx.drawImage(img, 0, 0, width, height);
+  const imageData = ctx.getImageData(0, 0, width, height).data;
+  const gray = new Float32Array(width * height);
+  for (let i = 0; i < gray.length; i += 1) {
+    const idx = i * 4;
+    gray[i] = imageData[idx] * 0.299 + imageData[idx + 1] * 0.587 + imageData[idx + 2] * 0.114;
+  }
+  const borderPixels = [];
+  for (let x = 0; x < width; x += 1) {
+    borderPixels.push(gray[x], gray[(height - 1) * width + x]);
+  }
+  for (let y = 0; y < height; y += 1) {
+    borderPixels.push(gray[y * width], gray[y * width + width - 1]);
+  }
+  const borderAvg = borderPixels.reduce((sum, value) => sum + value, 0) / Math.max(1, borderPixels.length);
+  const mask = new Uint8Array(width * height);
+  for (let i = 0; i < gray.length; i += 1) {
+    mask[i] = Math.abs(gray[i] - borderAvg) > 18 ? 1 : 0;
+  }
+  const hit = (x, y) => {
+    let sum = 0;
+    for (let ry = -2; ry <= 2; ry += 1) {
+      for (let rx = -1; rx <= 1; rx += 1) {
+        const xx = clamp(Math.round(x + rx), 0, width - 1);
+        const yy = clamp(Math.round(y + ry), 0, height - 1);
+        sum += mask[yy * width + xx];
+      }
+    }
+    return sum >= 4;
+  };
+  const centerX = Math.round(width / 2);
+  const scanWidthAt = (ratio) => {
+    const y = clamp(Math.round(height * ratio), 4, height - 4);
+    let left = centerX;
+    let right = centerX;
+    while (left > 2 && !hit(left, y)) left -= 1;
+    while (left > 2 && hit(left - 1, y)) left -= 1;
+    while (right < width - 3 && !hit(right, y)) right += 1;
+    while (right < width - 3 && hit(right + 1, y)) right += 1;
+    return Math.max(10, right - left);
+  };
+  const rowMass = new Array(height).fill(0).map((_, y) => {
+    let count = 0;
+    for (let x = 0; x < width; x += 1) count += mask[y * width + x];
+    return count;
+  });
+  const top = rowMass.findIndex((count) => count > width * 0.08);
+  const bottom = (() => {
+    for (let y = height - 1; y >= 0; y -= 1) if (rowMass[y] > width * 0.08) return y;
+    return height - 1;
+  })();
+  const bodyHeight = Math.max(1, bottom - Math.max(0, top));
+  const shoulderW = scanWidthAt(0.27);
+  const chestW = scanWidthAt(0.38);
+  const waistW = scanWidthAt(0.54);
+  const hipW = scanWidthAt(0.66);
+  const legW = scanWidthAt(0.82);
+  const torsoBase = Math.max(chestW, hipW, 1);
+  const mapRatio = (value, min, max) => clamp(Math.round(100 + (value - min) / Math.max(0.0001, max - min) * 18), 84, 122);
+  const shoulder = mapRatio(shoulderW / torsoBase, 0.86, 1.12);
+  const chest = mapRatio(chestW / torsoBase, 0.88, 1.08);
+  const waist = clamp(Math.round(104 - ((waistW / torsoBase) - 0.76) * 40), 82, 118);
+  const hip = mapRatio(hipW / torsoBase, 0.86, 1.12);
+  const arm = clamp(Math.round(100 + ((shoulderW - chestW) / Math.max(1, torsoBase)) * 40), 84, 118);
+  const leg = clamp(Math.round(92 + ((bottom - height * 0.58) / Math.max(1, bodyHeight)) * 28 + ((legW / torsoBase) - 0.44) * 20), 88, 118);
+  if (![shoulder, chest, waist, hip, arm, leg].every((value) => Number.isFinite(value))) return null;
+  return {
+    shoulder: shoulder / 100,
+    chest: chest / 100,
+    waist: waist / 100,
+    hip: hip / 100,
+    arm: arm / 100,
+    leg: leg / 100,
+    hasPhoto: true,
+  };
+}
+
+
+
+async function autoEstimatePhotoShape() {
+  if (!state.photoRefUrl) {
+    DOM.photoShapeMeta.textContent = '请先上传正面全身照';
+    return;
+  }
+  DOM.photoShapeMeta.textContent = '正在估测轮廓…';
+  try {
+    const estimated = await estimatePhotoShapeFromDataUrl(state.photoRefUrl);
+    if (!estimated) throw new Error('轮廓不足');
+    state.photoShape = { ...normalizePhotoShape(state.photoShape), ...estimated };
+    fillPhotoDialog();
+    renderAll();
+    DOM.photoShapeMeta.textContent = '已根据照片轮廓自动估测，可继续微调';
+  } catch (error) {
+    DOM.photoShapeMeta.textContent = `自动估测失败：${error.message}`;
+  }
+}
+
+
+
+function exportBodyJson() {
+  const payload = {
+    version: V32_BUILD_VERSION,
+    updatedAt: new Date().toISOString(),
+    profile: {
+      ...readProfileForm(),
+      bodyFat: clamp(Number(DOM.profileForm.bodyFat.value) || 22, 2, 60),
+      focusNote: String(DOM.profileForm.focusNote.value || '').trim().slice(0, 120),
+    },
+    photoShape: state.photoShape,
+    bodyHistory: normalizeBodyHistory(state.bodyHistory),
+  };
+  downloadJson(payload, `haochijia-body-${compactDateTime()}.json`);
+}
+
+
+
+function exportIntakeCsv() {
+  const rows = [[
+    'date', 'time', 'label', 'zh', 'en', 'original', 'library', 'code', 'grams',
+    'kcal', 'protein', 'carbs', 'fat', 'fiber', 'calcium', 'iron'
+  ].join(',')];
+  const days = Object.keys(state.logs || {}).sort();
+  days.forEach((date) => {
+    const items = state.logs?.[date]?.items || [];
+    items.forEach((item) => {
+      const labels = normalizeFoodLabels(item);
+      rows.push([
+        csvEscape(date),
+        csvEscape(item.createdAt || ''),
+        csvEscape(item.label || labels.zh || ''),
+        csvEscape(labels.zh || ''),
+        csvEscape(labels.en || ''),
+        csvEscape(labels.original || ''),
+        csvEscape(item.library || ''),
+        csvEscape(item.code || ''),
+        csvEscape(item.grams ?? ''),
+        csvEscape(item.nutrients?.kcal ?? ''),
+        csvEscape(item.nutrients?.protein ?? ''),
+        csvEscape(item.nutrients?.carbs ?? ''),
+        csvEscape(item.nutrients?.fat ?? ''),
+        csvEscape(item.nutrients?.fiber ?? ''),
+        csvEscape(item.nutrients?.calcium ?? ''),
+        csvEscape(item.nutrients?.iron ?? ''),
+      ].join(','));
+    });
+  });
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+  downloadBlob(blob, `haochijia-intake-${compactDateTime()}.csv`);
+}
+
+
+
+async function pushLocalBackup(snapshot) {
+  const existing = await idbGet(V32_IDB_BACKUP_KEY).catch(() => []);
+  const list = Array.isArray(existing) ? existing : [];
+  const safe = {
+    ...snapshot,
+    ...(state.photoRefUrl ? { photoRefUrl: state.photoRefUrl } : {}),
+    github: { ...(snapshot.github || {}), token: '' },
+  };
+  const next = [safe, ...list.filter((item) => item.updatedAt !== safe.updatedAt)].slice(0, LOCAL_BACKUP_LIMIT);
+  state.localBackupMeta = next;
+  await idbSet(V32_IDB_BACKUP_KEY, next).catch(() => null);
+}
+
+
+async function restoreLatestLocalBackup() {
+  const list = Array.isArray(state.localBackupMeta) && state.localBackupMeta.length
+    ? state.localBackupMeta
+    : await idbGet(V32_IDB_BACKUP_KEY).catch(() => []);
+  if (!Array.isArray(list) || !list.length) {
+    DOM.bodyStatusHint.textContent = '没有可恢复的本地备份';
+    return;
+  }
+  importJsonSnapshot(JSON.stringify(list[0]), 'all');
+  DOM.bodyStatusHint.textContent = '已恢复最近本地备份';
+}
+
+
 
 function safeJsonParse(text, fallback) {
   if (!text) return fallback;
@@ -1955,9 +2659,16 @@ function escapeReg(text) {
   return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function registerServiceWorker() {
-  if (!('serviceWorker' in navigator)) return;
-  navigator.serviceWorker.register('./sw.js').catch(() => null);
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return null;
+  try {
+    const reg = await navigator.serviceWorker.register(`./sw.js?v=${encodeURIComponent(V32_BUILD_VERSION)}`);
+    reg.update?.().catch(() => null);
+    return reg;
+  } catch (error) {
+    console.warn('[haochijia] service worker register failed.', error);
+    return null;
+  }
 }
 
 function openDb() {
@@ -1989,1821 +2700,4 @@ async function idbSet(key, value) {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error || new Error('IndexedDB write failed'));
   });
-}
-
-/* ===== v31 premium reinforcement logic override ===== */
-const V32_STORAGE_KEYS = ['haochijia.core.v32.snapshot', STORAGE_KEY];
-const V32_IDB_SNAPSHOT_KEYS = ['snapshot-v32', IDB_SNAPSHOT_KEY];
-const V32_IDB_BACKUP_KEY = 'snapshot-history-v32';
-const LOCAL_BACKUP_LIMIT = 18;
-const FOOD_REGION_OPTIONS = new Set(['all', 'cn', 'intl']);
-const FOOD_NAME_MODE_OPTIONS = new Set(['zh', 'en', 'original']);
-
-Object.assign(DEFAULT_GITHUB, {
-  owner: 'kawhikun',
-  repo: 'haochijia',
-  branch: 'main',
-  path: 'data/haochijia-user.json',
-});
-Object.assign(RING_COLORS, {
-  protein: '#6c8fa9',
-  fat: '#fec187',
-  carbs: '#99c4cf',
-  fiber: '#a7c190',
-  water: '#cddae2',
-  calcium: '#b484b0',
-  vitaminD: '#f4796a',
-  vitaminK: '#6b8857',
-  iron: '#d85b72',
-  folate: '#a6d3b1',
-  vitaminB12: '#795f9c',
-  potassium: '#518463',
-  magnesium: '#6c4d7e',
-  omega3: '#4c697a',
-  vitaminC: '#f4796a',
-});
-DISPLAY_LABELS.vitaminD = '维生素 D3';
-DISPLAY_LABELS.vitaminK = '维生素 K1/K2';
-state.foodLibrary = state.foodLibrary || 'all';
-state.foodNameMode = state.foodNameMode || 'zh';
-state.localBackupMeta = [];
-state.photoShape = normalizePhotoShape(state.photoShape || {});
-state.github = resolveGitHubSnapshot(state.github || {});
-
-function resolveGitHubSnapshot(raw = {}) {
-  return {
-    owner: String(raw.owner || DEFAULT_GITHUB.owner || 'kawhikun').trim() || 'kawhikun',
-    repo: String(raw.repo || DEFAULT_GITHUB.repo || 'haochijia').trim() || 'haochijia',
-    branch: String(raw.branch || DEFAULT_GITHUB.branch || 'main').trim() || 'main',
-    path: String(raw.path || DEFAULT_GITHUB.path || 'data/haochijia-user.json').trim() || 'data/haochijia-user.json',
-    token: String(raw.token || '').trim(),
-    autoSync: Boolean(raw.autoSync),
-    lastSyncAt: String(raw.lastSyncAt || ''),
-    lastSyncStatus: String(raw.lastSyncStatus || ''),
-  };
-}
-
-function normalizeFoodLabels(raw) {
-  const source = raw?.labels ? raw.labels : raw || {};
-  const name = String(raw?.name || raw?.label || raw?.z || raw?.n || '').trim();
-  const original = String(source.original || raw?.n || raw?.name || raw?.label || name || '').trim();
-  const zh = String(source.zh || raw?.z || raw?.name || raw?.label || original || '').trim();
-  const explicitEn = String(source.en || '').trim();
-  const en = explicitEn || (/[A-Za-z]/.test(original) ? original : (/[A-Za-z]/.test(name) ? name : ''));
-  return {
-    zh: zh || original || en || name || '未命名食品',
-    en: en || original || zh || name || 'Unnamed food',
-    original: original || zh || en || name || 'Unnamed food',
-  };
-}
-
-function buildCustomFoodLabels(name, raw = {}) {
-  const labels = normalizeFoodLabels({ ...raw, name, label: name, labels: raw.labels || {} });
-  if (!labels.en && /[A-Za-z]/.test(name)) labels.en = name;
-  return labels;
-}
-
-function classifyFoodLibrary(food) {
-  const labels = normalizeFoodLabels(food);
-  const raw = `${labels.original} ${food?.b || ''} ${food?.g || ''}`;
-  if (/[ぁ-ゟ゠-ヿㇰ-ㇿ]/.test(raw) || /[\uac00-\ud7af]/.test(raw)) return 'intl';
-  if (/[\u4e00-\u9fff]/.test(raw)) return 'cn';
-  return 'intl';
-}
-
-function foodDisplayNameForMode(food, mode = state.foodNameMode) {
-  const labels = normalizeFoodLabels(food);
-  const safeMode = FOOD_NAME_MODE_OPTIONS.has(mode) ? mode : 'zh';
-  return String(labels[safeMode] || labels.zh || labels.original || labels.en || food?.name || food?.n || '未命名食品');
-}
-
-function foodSecondaryName(food, mode = state.foodNameMode) {
-  const labels = normalizeFoodLabels(food);
-  const primary = normalizeText(foodDisplayNameForMode(food, mode));
-  const candidates = mode === 'zh'
-    ? [labels.en, labels.original]
-    : mode === 'en'
-      ? [labels.zh, labels.original]
-      : [labels.zh, labels.en];
-  return candidates.find((value) => value && normalizeText(value) !== primary) || '';
-}
-
-function foodDisplayName(food) {
-  return foodDisplayNameForMode(food, state.foodNameMode);
-}
-
-function buildFoodSearchText(food) {
-  const labels = normalizeFoodLabels(food);
-  return normalizeText([
-    labels.zh,
-    labels.en,
-    labels.original,
-    food?.code || food?.c || '',
-    food?.b || '',
-    food?.g || '',
-    food?.q || '',
-    food?.z || '',
-    food?.n || '',
-  ].join(' '));
-}
-
-function foodPool() {
-  const merged = [...state.customFoods.map(prepareFood), ...state.foods];
-  if (state.foodLibrary === 'all') return merged;
-  return merged.filter((food) => (food.library || classifyFoodLibrary(food)) === state.foodLibrary);
-}
-
-function renderFilterButtons() {
-  DOM.foodRegionGroup?.querySelectorAll('[data-food-region]').forEach((btn) => {
-    btn.classList.toggle('is-active', btn.dataset.foodRegion === state.foodLibrary);
-  });
-  DOM.foodLanguageGroup?.querySelectorAll('[data-food-lang]').forEach((btn) => {
-    btn.classList.toggle('is-active', btn.dataset.foodLang === state.foodNameMode);
-  });
-}
-
-function renderLocalBackupMeta() {
-  if (!DOM.localBackupMeta) return;
-  const list = Array.isArray(state.localBackupMeta) ? state.localBackupMeta : [];
-  if (!list.length) {
-    DOM.localBackupMeta.textContent = '最近本地备份：0 份';
-    return;
-  }
-  DOM.localBackupMeta.textContent = `最近本地备份：${list.length} 份 · 最新 ${formatDateTime(list[0].updatedAt)}`;
-}
-
-function renderGitHubStatus() {
-  const ok = state.github.owner && state.github.repo && state.github.path;
-  if (!ok) {
-    DOM.githubStatus.textContent = '未配置';
-    return;
-  }
-  const tail = state.github.lastSyncAt ? ` · ${formatTime(state.github.lastSyncAt)}` : '';
-  const syncTail = state.github.lastSyncStatus === 'success' ? `已同步${tail}` : '未同步';
-  DOM.githubStatus.textContent = `${state.github.owner}/${state.github.repo} · ${syncTail}`;
-}
-
-function bindDom() {
-  const ids = [
-    'appShell', 'platformBadge', 'menuBtn', 'heroStage', 'bodyCanvas', 'stagePhotoRef', 'focusModePill', 'focusModeText', 'ringOrbit',
-    'profileForm', 'bodyForm', 'bodyStatusHint', 'importBodyBtn', 'saveBodyBtn', 'photoShapeBtn', 'suggestionSummary', 'suggestionCards',
-    'bodyHistoryList', 'bodyHistoryMeta', 'foodSearchStatus', 'foodSearchInput', 'foodAmountInput', 'foodSearchResults', 'captureInput',
-    'runBarcodeBtn', 'runOcrBtn', 'capturePreview', 'captureStatus', 'captureResult', 'captureFoodName', 'captureBasis', 'captureServingSize',
-    'captureServings', 'captureNutrients', 'addCaptureFoodBtn', 'saveCaptureFoodBtn', 'progressList', 'dayTotalBadge', 'logList', 'clearDayBtn',
-    'photoDialog', 'photoInput', 'photoPreview', 'photoAutoBtn', 'photoShapeMeta', 'shapeShoulder', 'shapeChest', 'shapeWaist', 'shapeHip', 'shapeArm', 'shapeLeg', 'photoResetBtn', 'photoApplyBtn',
-    'dataDialog', 'persistStatus', 'localBackupMeta', 'restoreLocalBtn', 'importAllBtn', 'exportAllBtn', 'bodyCsvBtn', 'persistBtn', 'githubStatus', 'ghOwner', 'ghRepo', 'ghBranch',
-    'ghPath', 'ghToken', 'ghAutoSync', 'ghRestoreBtn', 'ghSyncBtn', 'importInput', 'foodRegionGroup', 'foodLanguageGroup'
-  ];
-  ids.forEach((id) => { DOM[id] = document.getElementById(id); });
-}
-
-async function init() {
-  bindDom();
-  document.body.dataset.platform = state.platform.key;
-  DOM.platformBadge.textContent = state.platform.label;
-  await loadState();
-  fillFormsFromState();
-  bindEvents();
-  state.model = createBodyModelController(DOM.bodyCanvas, {
-    onLongPress: () => activateTab('body'),
-    onViewReset: () => {
-      DOM.focusModeText.textContent = `${state.focusMode?.label || '基础模式'} · 视角已回正`;
-      window.setTimeout(() => renderHeroMeta(), 900);
-    },
-  });
-  await state.model.ready;
-  registerServiceWorker();
-  requestIdleLoadFoods();
-  renderAll();
-  await updatePersistStatus();
-  renderLocalBackupMeta();
-}
-
-function bindEvents() {
-  document.querySelectorAll('.tab-btn').forEach((btn) => {
-    btn.addEventListener('click', () => activateTab(btn.dataset.tab || 'body'));
-  });
-
-  DOM.menuBtn.addEventListener('click', () => DOM.dataDialog.showModal());
-  DOM.photoShapeBtn.addEventListener('click', () => {
-    fillPhotoDialog();
-    DOM.photoDialog.showModal();
-  });
-  DOM.importBodyBtn.addEventListener('click', () => {
-    DOM.importInput.dataset.mode = 'body';
-    DOM.importInput.click();
-  });
-  DOM.importAllBtn.addEventListener('click', () => {
-    DOM.importInput.dataset.mode = 'all';
-    DOM.importInput.click();
-  });
-  DOM.importInput.addEventListener('change', onImportSelected);
-
-  DOM.profileForm.addEventListener('input', onProfileInput);
-  DOM.profileForm.addEventListener('change', onProfileInput);
-  DOM.bodyForm.addEventListener('input', onBodyInput);
-  DOM.bodyForm.addEventListener('change', onBodyInput);
-  DOM.saveBodyBtn.addEventListener('click', saveBodyRecord);
-
-  DOM.foodSearchInput.addEventListener('input', onFoodSearchInput);
-  DOM.foodSearchInput.addEventListener('focus', async () => {
-    await ensureFoodsLoaded();
-    renderFoodSearchResults();
-  });
-  DOM.foodAmountInput.addEventListener('input', renderFoodSearchResults);
-  DOM.foodSearchResults.addEventListener('click', onFoodResultsClick);
-  DOM.foodRegionGroup?.addEventListener('click', (event) => {
-    const btn = event.target.closest('[data-food-region]');
-    if (!btn) return;
-    state.foodLibrary = FOOD_REGION_OPTIONS.has(btn.dataset.foodRegion) ? btn.dataset.foodRegion : 'all';
-    state.searchResults = state.searchQuery ? searchFoods(state.searchQuery).slice(0, FOOD_SEARCH_LIMIT) : state.searchResults;
-    persistState({ syncEligible: false });
-    renderAll();
-  });
-  DOM.foodLanguageGroup?.addEventListener('click', (event) => {
-    const btn = event.target.closest('[data-food-lang]');
-    if (!btn) return;
-    state.foodNameMode = FOOD_NAME_MODE_OPTIONS.has(btn.dataset.foodLang) ? btn.dataset.foodLang : 'zh';
-    persistState({ syncEligible: false });
-    renderAll();
-  });
-
-  DOM.captureInput.addEventListener('change', updateCapturePreview);
-  DOM.runBarcodeBtn.addEventListener('click', runBarcodeSearch);
-  DOM.runOcrBtn.addEventListener('click', runOcrSearch);
-  DOM.captureBasis.addEventListener('change', renderCaptureResult);
-  DOM.addCaptureFoodBtn.addEventListener('click', addCaptureFoodToToday);
-  DOM.saveCaptureFoodBtn.addEventListener('click', saveCaptureFoodToLibrary);
-
-  DOM.logList.addEventListener('click', onLogListClick);
-  DOM.bodyHistoryList.addEventListener('click', onBodyHistoryClick);
-  DOM.clearDayBtn.addEventListener('click', clearTodayLog);
-
-  DOM.photoInput.addEventListener('change', onPhotoSelected);
-  ['shapeShoulder', 'shapeChest', 'shapeWaist', 'shapeHip', 'shapeArm', 'shapeLeg'].forEach((id) => {
-    DOM[id].addEventListener('input', renderPhotoPreviewMeta);
-  });
-  DOM.photoAutoBtn?.addEventListener('click', autoEstimatePhotoShape);
-  DOM.photoResetBtn.addEventListener('click', resetPhotoShape);
-  DOM.photoApplyBtn.addEventListener('click', applyPhotoShape);
-
-  DOM.exportAllBtn.addEventListener('click', exportAllData);
-  DOM.bodyCsvBtn.addEventListener('click', exportBodyCsv);
-  DOM.restoreLocalBtn?.addEventListener('click', restoreLatestLocalBackup);
-  DOM.persistBtn.addEventListener('click', requestPersistentStorage);
-  DOM.ghSyncBtn.addEventListener('click', () => syncToGitHub(true));
-  DOM.ghRestoreBtn.addEventListener('click', restoreFromGitHub);
-  ['ghOwner', 'ghRepo', 'ghBranch', 'ghPath', 'ghToken', 'ghAutoSync'].forEach((id) => {
-    DOM[id].addEventListener('input', onGitHubFieldChange);
-    DOM[id].addEventListener('change', onGitHubFieldChange);
-  });
-
-  DOM.ringOrbit.addEventListener('click', (event) => {
-    const btn = event.target.closest('[data-ring-id]');
-    if (!btn) return;
-    state.activeRing = btn.dataset.ringId || state.activeRing;
-    state.model?.setFocusField(RING_FIELD_MAP[state.activeRing] || '');
-    state.model?.setAccentColor?.(RING_COLORS[state.activeRing] || '#6c8fa9');
-    renderHeroRings();
-  });
-}
-
-async function loadState() {
-  const localSnapshots = V32_STORAGE_KEYS.map((key) => safeJsonParse(localStorage.getItem(key), null)).filter(Boolean);
-  const idbSnapshots = (await Promise.all(V32_IDB_SNAPSHOT_KEYS.map((key) => idbGet(key).catch(() => null)))).filter(Boolean);
-  const snapshot = [...localSnapshots, ...idbSnapshots].reduce((best, current) => pickNewestSnapshot(best, current), null) || createDefaultSnapshot();
-  applySnapshot(snapshot);
-  const photoRef = snapshot.photoRefUrl || await idbGet(IDB_PHOTO_KEY).catch(() => '');
-  state.photoRefUrl = typeof photoRef === 'string' ? photoRef : '';
-  state.localBackupMeta = await idbGet(V32_IDB_BACKUP_KEY).catch(() => []);
-}
-
-function createDefaultSnapshot() {
-  return {
-    version: 'v31-premium',
-    updatedAt: new Date().toISOString(),
-    profile: { ...defaultProfile(), bodyFat: 22, focusNote: '' },
-    bodyHistory: [],
-    logs: {},
-    customFoods: [],
-    photoShape: { shoulder: 1, chest: 1, waist: 1, hip: 1, arm: 1, leg: 1, hasPhoto: false },
-    preferences: { foodLibrary: 'all', foodNameMode: 'zh' },
-    github: resolveGitHubSnapshot({}),
-  };
-}
-
-function applySnapshot(snapshot) {
-  state.profile = normalizeProfileSnapshot(snapshot.profile);
-  state.bodyHistory = normalizeBodyHistory(snapshot.bodyHistory || []);
-  state.logs = normalizeLogs(snapshot.logs || {});
-  state.customFoods = normalizeCustomFoods(snapshot.customFoods || []);
-  state.photoShape = normalizePhotoShape(snapshot.photoShape || {});
-  if (typeof snapshot.photoRefUrl === 'string') state.photoRefUrl = snapshot.photoRefUrl;
-  state.foodLibrary = FOOD_REGION_OPTIONS.has(snapshot.preferences?.foodLibrary) ? snapshot.preferences.foodLibrary : 'all';
-  state.foodNameMode = FOOD_NAME_MODE_OPTIONS.has(snapshot.preferences?.foodNameMode) ? snapshot.preferences.foodNameMode : 'zh';
-  state.github = resolveGitHubSnapshot(snapshot.github || {});
-  state.focusMode = inferFocusMode(state.profile);
-  state.activeRing = state.focusMode.nutrientIds[0];
-}
-
-function normalizeCustomFood(raw) {
-  if (!raw || typeof raw !== 'object') return null;
-  const name = String(raw.name || raw.label || raw.n || '').trim();
-  if (!name) return null;
-  const labels = buildCustomFoodLabels(name, raw);
-  return {
-    id: String(raw.id || uid('custom')),
-    name,
-    code: String(raw.code || ''),
-    basis: raw.basis === 'serving' ? 'serving' : raw.basis === '100ml' ? '100ml' : '100g',
-    servingSize: finiteOrNull(raw.servingSize),
-    customPer100: normalizeNutrientObject(raw.customPer100 || raw.customNutrients || {}),
-    labels,
-    library: raw.library || classifyFoodLibrary({ labels }),
-  };
-}
-
-function normalizeLogItem(raw) {
-  if (!raw || typeof raw !== 'object') return null;
-  const labels = normalizeFoodLabels(raw);
-  return {
-    id: raw.id || uid('log'),
-    createdAt: raw.createdAt || new Date().toISOString(),
-    label: String(raw.label || raw.name || labels.zh || '未命名食品'),
-    labels,
-    grams: finiteOrNull(raw.grams),
-    code: String(raw.code || ''),
-    nutrients: normalizeNutrientObject(raw.nutrients || {}),
-    source: String(raw.source || 'library'),
-    library: String(raw.library || classifyFoodLibrary({ labels })),
-  };
-}
-
-function normalizePhotoShape(raw = {}) {
-  return {
-    shoulder: clamp(Number(raw.shoulder) || 1, 0.8, 1.25),
-    chest: clamp(Number(raw.chest) || 1, 0.82, 1.25),
-    waist: clamp(Number(raw.waist) || 1, 0.78, 1.22),
-    hip: clamp(Number(raw.hip) || 1, 0.82, 1.26),
-    arm: clamp(Number(raw.arm) || 1, 0.8, 1.22),
-    leg: clamp(Number(raw.leg) || 1, 0.85, 1.2),
-    hasPhoto: Boolean(raw.hasPhoto),
-  };
-}
-
-function fillFormsFromState() {
-  const p = state.profile;
-  DOM.profileForm.sex.value = p.sex;
-  DOM.profileForm.age.value = p.age;
-  DOM.profileForm.heightCm.value = p.heightCm;
-  DOM.profileForm.weightKg.value = p.weightKg;
-  DOM.profileForm.bodyFat.value = p.bodyFat || '';
-  DOM.profileForm.activity.value = p.activity;
-  DOM.profileForm.goal.value = p.goal;
-  DOM.profileForm.training.value = p.training;
-  DOM.profileForm.trainingHoursWeek.value = p.trainingHoursWeek;
-  DOM.profileForm.diet.value = p.diet;
-  DOM.profileForm.physiology.value = p.physiology;
-  DOM.profileForm.glucoseStatus.value = p.glucoseStatus;
-  DOM.profileForm.focusNote.value = p.focusNote || '';
-  DOM.profileForm.boneRisk.checked = Boolean(p.conditions?.boneRisk);
-  DOM.profileForm.anemiaRisk.checked = Boolean(p.conditions?.anemiaRisk);
-  DOM.profileForm.hypertension.checked = Boolean(p.conditions?.hypertension);
-  DOM.profileForm.dyslipidemia.checked = Boolean(p.conditions?.dyslipidemia);
-  DOM.profileForm.smoker.checked = Boolean(p.smoker);
-
-  fillBodyForm(state.bodyHistory[0] || {});
-  fillGitHubForm();
-  fillPhotoDialog();
-  renderFilterButtons();
-}
-
-function fillGitHubForm() {
-  DOM.ghOwner.value = state.github.owner || DEFAULT_GITHUB.owner || 'kawhikun';
-  DOM.ghRepo.value = state.github.repo || DEFAULT_GITHUB.repo || 'haochijia';
-  DOM.ghBranch.value = state.github.branch || 'main';
-  DOM.ghPath.value = state.github.path || 'data/haochijia-user.json';
-  DOM.ghToken.value = state.github.token || '';
-  DOM.ghAutoSync.checked = Boolean(state.github.autoSync);
-}
-
-function fillPhotoDialog() {
-  DOM.shapeShoulder.value = Math.round((state.photoShape.shoulder || 1) * 100);
-  DOM.shapeChest.value = Math.round((state.photoShape.chest || 1) * 100);
-  DOM.shapeWaist.value = Math.round((state.photoShape.waist || 1) * 100);
-  DOM.shapeHip.value = Math.round((state.photoShape.hip || 1) * 100);
-  DOM.shapeArm.value = Math.round((state.photoShape.arm || 1) * 100);
-  DOM.shapeLeg.value = Math.round((state.photoShape.leg || 1) * 100);
-  if (state.photoRefUrl) {
-    DOM.photoPreview.src = state.photoRefUrl;
-    DOM.photoPreview.hidden = false;
-  } else {
-    DOM.photoPreview.hidden = true;
-    DOM.photoPreview.removeAttribute('src');
-  }
-  renderPhotoPreviewMeta();
-}
-
-function renderAll() {
-  recomputeState();
-  renderHeroMeta();
-  renderHeroRings();
-  renderSuggestions();
-  renderBodyHistory();
-  renderFoodSearchResults();
-  renderProgressList();
-  renderLogList();
-  renderCaptureResult();
-  renderPhotoRef();
-  renderGitHubStatus();
-  renderFilterButtons();
-  renderLocalBackupMeta();
-  if (state.model) {
-    state.model.setSnapshot(buildModelSnapshot());
-    state.model.setFocusField(RING_FIELD_MAP[state.activeRing] || '');
-    state.model.setAccentColor?.(RING_COLORS[state.activeRing] || '#6c8fa9');
-  }
-}
-
-function renderHeroMeta() {
-  DOM.focusModePill.textContent = `${state.focusMode.label} · 6 环联动`;
-  DOM.focusModeText.textContent = `${nutrientDisplayName(state.activeRing)} 高亮 · 拖旋 / 缩放 / 双击回正`;
-}
-
-function buildHeroRingData() {
-  const targets = state.calc.targets;
-  const dynamicIds = state.focusMode.nutrientIds.slice(3);
-  const baseIds = state.focusMode.nutrientIds.slice(0, 3);
-  const ordered = [...dynamicIds, ...baseIds];
-  return ordered.map((id, index) => {
-    const target = targets[id];
-    const current = Number(state.totals[id] || 0);
-    const progress = progressForTarget(target, current);
-    return {
-      id,
-      focus: index < 3,
-      label: nutrientDisplayName(id),
-      percent: clamp(progress * 100, 0, 199),
-      meta: `${formatCompactNutrient(id, current)} / ${formatCompactNutrient(id, targetValue(target))}`,
-      color: RING_COLORS[id] || '#6c8fa9',
-    };
-  });
-}
-
-function ringLayoutPoints(width, height) {
-  const small = width < 392;
-  return [
-    { x: width * (small ? 0.25 : 0.23), y: height * 0.19 },
-    { x: width * (small ? 0.75 : 0.77), y: height * 0.19 },
-    { x: width * (small ? 0.86 : 0.88), y: height * 0.43 },
-    { x: width * (small ? 0.74 : 0.77), y: height * 0.74 },
-    { x: width * (small ? 0.26 : 0.23), y: height * 0.74 },
-    { x: width * (small ? 0.14 : 0.12), y: height * 0.43 },
-  ];
-}
-
-function renderHeroRings() {
-  if (!DOM.ringOrbit) return;
-  const ringData = buildHeroRingData();
-  const rect = DOM.heroStage?.getBoundingClientRect?.() || DOM.ringOrbit.getBoundingClientRect();
-  const width = rect.width || 360;
-  const height = rect.height || 520;
-  const points = ringLayoutPoints(width, height);
-  DOM.ringOrbit.innerHTML = '';
-  ringData.forEach((ring, index) => {
-    const point = points[index] || points[points.length - 1];
-    const active = ring.id === state.activeRing;
-    const size = active ? (width < 390 ? 92 : 100) : (ring.focus ? (width < 390 ? 84 : 90) : (width < 390 ? 80 : 86));
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = `nutri-ring${ring.focus ? ' is-focus' : ''}${active ? ' is-active' : ''}`;
-    button.dataset.ringId = ring.id;
-    button.style.left = `${point.x}px`;
-    button.style.top = `${point.y}px`;
-    button.style.transform = 'translate(-50%, -50%)';
-    button.style.width = `${size}px`;
-    button.style.height = `${size}px`;
-    button.style.setProperty('--ring-color', ring.color);
-    button.style.setProperty('--ring-pct', `${Math.max(0, Math.min(100, ring.percent))}%`);
-    button.innerHTML = `
-      <span class="ring-inner">
-        <span>
-          <strong>${escapeHtml(ring.label)}</strong>
-          <span class="ring-percent">${Math.round(ring.percent)}%</span>
-          <span class="ring-meta">${escapeHtml(ring.meta)}</span>
-        </span>
-      </span>`;
-    DOM.ringOrbit.appendChild(button);
-  });
-}
-
-function renderSuggestions() {
-  const cards = buildSuggestionCards();
-  DOM.suggestionSummary.textContent = `${state.focusMode.label} · ${cards.length} 条重点建议`;
-  if (!cards.length) {
-    DOM.suggestionCards.innerHTML = '<div class="empty-state">暂无建议</div>';
-    return;
-  }
-  DOM.suggestionCards.innerHTML = cards.map((card) => `
-    <article class="suggestion-card">
-      <strong>${escapeHtml(card.title)}</strong>
-      <div class="history-meta">${escapeHtml(card.subtitle)}</div>
-      <div class="suggestion-foods">${escapeHtml(card.foods.join(' · '))}</div>
-    </article>
-  `).join('');
-}
-
-function renderBodyHistory() {
-  DOM.bodyHistoryMeta.textContent = `${state.bodyHistory.length} 条`;
-  if (!state.bodyHistory.length) {
-    DOM.bodyHistoryList.innerHTML = '<div class="empty-state">先保存第一条身体记录</div>';
-    return;
-  }
-  DOM.bodyHistoryList.innerHTML = state.bodyHistory.slice(0, 10).map((item, index) => `
-    <article class="history-item">
-      <strong>${escapeHtml(formatDateTime(item.recordedAt))}</strong>
-      <div class="history-meta">${escapeHtml(bodyRecordSummary(item))}</div>
-      <button type="button" class="ghost-btn tiny-btn" data-load-body-index="${index}">载入到模型</button>
-    </article>
-  `).join('');
-}
-
-function libraryTagLabel(library) {
-  return library === 'cn' ? '中文库' : '国际库';
-}
-
-function renderFoodSearchResults() {
-  renderFilterButtons();
-  if (!state.searchQuery.trim()) {
-    DOM.foodSearchResults.innerHTML = renderSearchPlaceholder();
-    return;
-  }
-  if (state.foodsLoading && !state.foodsLoaded) {
-    DOM.foodSearchResults.innerHTML = '<div class="empty-state">食品库加载中…</div>';
-    return;
-  }
-  if (!state.searchResults.length) {
-    DOM.foodSearchResults.innerHTML = '<div class="empty-state">没有找到匹配项</div>';
-    return;
-  }
-  const amount = clamp(Number(DOM.foodAmountInput.value) || 100, 1, 3000);
-  DOM.foodSearchResults.innerHTML = state.searchResults.map((food, index) => {
-    const per100 = nutrientsForFood(food);
-    const secondary = foodSecondaryName(food);
-    const tags = [
-      `<span class="food-tag ${food.library === 'cn' ? 'cn' : 'intl'}">${libraryTagLabel(food.library)}</span>`,
-      food.customPer100 ? '<span class="food-tag custom">自定义</span>' : '',
-      food.code ? `<span class="food-tag">${escapeHtml(food.code)}</span>` : '',
-    ].filter(Boolean).join('');
-    return `
-      <article class="food-item">
-        <strong>${escapeHtml(foodDisplayName(food))}</strong>
-        <div class="food-meta">
-          ${secondary ? `<div class="history-meta">${escapeHtml(secondary)}</div>` : ''}
-          <div>每 100：${escapeHtml(formatCompactNutrient('kcal', per100.kcal || 0))} · ${escapeHtml(formatCompactNutrient('protein', per100.protein || 0))} · ${escapeHtml(formatCompactNutrient('carbs', per100.carbs || 0))} · ${escapeHtml(formatCompactNutrient('fat', per100.fat || 0))}</div>
-          <div class="food-tags">${tags}</div>
-        </div>
-        <div class="food-actions">
-          <button type="button" class="primary-btn tiny-btn" data-add-food-index="${index}" data-add-food-amount="${amount}">加入 ${amount}g</button>
-          ${food.code ? `<button type="button" class="ghost-btn tiny-btn" data-search-code="${escapeHtml(food.code)}">${escapeHtml(food.code)}</button>` : ''}
-        </div>
-      </article>
-    `;
-  }).join('');
-}
-
-function renderSearchPlaceholder() {
-  const recent = recentFoods(6);
-  if (!recent.length) return '<div class="empty-state">输入食品名、品牌、条码或英文名</div>';
-  return recent.map((food, index) => `
-    <article class="food-item">
-      <strong>${escapeHtml(foodDisplayName(food))}</strong>
-      <div class="food-meta">最近使用</div>
-      <div class="food-actions">
-        <button type="button" class="ghost-btn tiny-btn" data-recent-food-index="${index}">再次加入</button>
-      </div>
-    </article>
-  `).join('');
-}
-
-function renderLogList() {
-  const items = getDayLog(state.activeDate).items;
-  if (!items.length) {
-    DOM.logList.innerHTML = '<div class="empty-state">今天还没有记录</div>';
-    return;
-  }
-  DOM.logList.innerHTML = items.map((item, index) => `
-    <article class="log-item">
-      <strong>${escapeHtml(logItemDisplayName(item))}</strong>
-      <div class="log-meta">${escapeHtml(formatTime(item.createdAt))}${item.grams ? ` · ${item.grams}g` : ''} · ${escapeHtml(formatCompactNutrient('kcal', item.nutrients.kcal || 0))}</div>
-      <div class="log-actions">
-        <button type="button" class="ghost-btn tiny-btn" data-remove-log-index="${index}">删除</button>
-      </div>
-    </article>
-  `).join('');
-}
-
-function logItemDisplayName(item) {
-  return foodDisplayNameForMode(item, state.foodNameMode);
-}
-
-function onFoodSearchInput() {
-  state.searchQuery = String(DOM.foodSearchInput.value || '').trim();
-  if (!state.searchQuery) {
-    state.searchResults = [];
-    DOM.foodSearchStatus.textContent = '待输入';
-    renderFoodSearchResults();
-    return;
-  }
-  ensureFoodsLoaded().then(() => {
-    state.searchResults = searchFoods(state.searchQuery).slice(0, FOOD_SEARCH_LIMIT);
-    DOM.foodSearchStatus.textContent = `找到 ${state.searchResults.length} 项 · ${state.foodLibrary === 'all' ? '全部库' : libraryTagLabel(state.foodLibrary)}`;
-    renderFoodSearchResults();
-  }).catch((error) => {
-    DOM.foodSearchStatus.textContent = `食品库失败：${error.message}`;
-  });
-}
-
-async function ensureFoodsLoaded() {
-  if (state.foodsLoaded) return state.foods;
-  if (state.foodsPromise) return state.foodsPromise;
-  state.foodsLoading = true;
-  DOM.foodSearchStatus.textContent = '食品库加载中…';
-  state.foodsPromise = fetch('./data/foods.min.json', { cache: 'force-cache' })
-    .then((response) => {
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return response.json();
-    })
-    .then((foods) => {
-      state.foods = Array.isArray(foods) ? foods.map(prepareFood) : [];
-      state.foodsLoaded = true;
-      state.foodsLoading = false;
-      DOM.foodSearchStatus.textContent = `食品库 ${state.foods.length.toLocaleString('zh-CN')} 条`;
-      renderFilterButtons();
-      return state.foods;
-    })
-    .catch((error) => {
-      state.foodsLoading = false;
-      state.foodsPromise = null;
-      throw error;
-    });
-  return state.foodsPromise;
-}
-
-function prepareFood(food) {
-  const labels = normalizeFoodLabels(food);
-  food.labels = { ...(food.labels || {}), ...labels };
-  food.code = food.code || food.c || '';
-  food.library = food.library || classifyFoodLibrary(food);
-  food._displayName = labels.zh;
-  food._search = buildFoodSearchText(food);
-  return food;
-}
-
-function searchFoods(query) {
-  const q = normalizeText(query);
-  const isCode = /^\d{6,14}$/.test(q);
-  const tokens = q.split(/\s+/).filter(Boolean);
-  const results = [];
-  for (const food of foodPool()) {
-    const hay = food._search || buildFoodSearchText(food);
-    let score = 0;
-    if (isCode) {
-      if ((food.code || '').startsWith(q)) score += food.code === q ? 140 : 90;
-      else continue;
-    } else {
-      if (hay.includes(q)) score += 40;
-      let matched = 0;
-      for (const token of tokens) {
-        if (hay.includes(token)) {
-          matched += 1;
-          score += normalizeText(foodDisplayNameForMode(food, state.foodNameMode)).startsWith(token) ? 18 : 8;
-        }
-      }
-      if (matched < tokens.length) continue;
-      if (normalizeText(foodDisplayNameForMode(food, state.foodNameMode)).startsWith(q)) score += 20;
-      if (normalizeText(foodDisplayNameForMode(food, 'zh')).startsWith(q)) score += 10;
-    }
-    if (food.customPer100) score += 8;
-    if (food.library === state.foodLibrary) score += 4;
-    results.push({ food, score });
-  }
-  return results.sort((a, b) => b.score - a.score).slice(0, FOOD_SEARCH_LIMIT).map((item) => item.food);
-}
-
-function addFoodToToday(food, grams) {
-  const nutrients = foodNutrientsForAmount(food, grams);
-  const labels = normalizeFoodLabels(food);
-  const item = {
-    id: uid('log'),
-    createdAt: new Date().toISOString(),
-    label: labels.zh || labels.original,
-    labels,
-    grams: round1(grams),
-    code: food.code || '',
-    nutrients,
-    source: food.customPer100 ? 'custom' : 'library',
-    library: food.library || classifyFoodLibrary(food),
-  };
-  getDayLog(state.activeDate).items.unshift(item);
-  getDayLog(state.activeDate).items = getDayLog(state.activeDate).items.slice(0, MAX_LOG_ITEMS_PER_DAY);
-  persistState({ syncEligible: true });
-  renderAll();
-  DOM.foodSearchStatus.textContent = `${foodDisplayName(food)} 已加入`;
-}
-
-function buildModelRecord() {
-  const record = buildCurrentBodyRecord();
-  return {
-    ...record,
-    upperArmL: record.upperArm,
-    upperArmR: record.upperArm,
-    forearmL: record.forearm,
-    forearmR: record.forearm,
-    thighL: record.thigh,
-    thighR: record.thigh,
-    calfL: record.calf,
-    calfR: record.calf,
-    ankleL: record.ankle,
-    ankleR: record.ankle,
-    shapeShoulder: state.photoShape.shoulder,
-    shapeChest: state.photoShape.chest,
-    shapeWaist: state.photoShape.waist,
-    shapeHip: state.photoShape.hip,
-    shapeArm: state.photoShape.arm,
-    shapeLeg: state.photoShape.leg,
-  };
-}
-
-function expandHistoryRecord(record) {
-  return {
-    ...record,
-    upperArmL: record.upperArm,
-    upperArmR: record.upperArm,
-    forearmL: record.forearm,
-    forearmR: record.forearm,
-    thighL: record.thigh,
-    thighR: record.thigh,
-    calfL: record.calf,
-    calfR: record.calf,
-    ankleL: record.ankle,
-    ankleR: record.ankle,
-    shapeShoulder: state.photoShape.shoulder,
-    shapeChest: state.photoShape.chest,
-    shapeWaist: state.photoShape.waist,
-    shapeHip: state.photoShape.hip,
-    shapeArm: state.photoShape.arm,
-    shapeLeg: state.photoShape.leg,
-  };
-}
-
-function renderCaptureResult() {
-  if (!state.captureParsed) {
-    DOM.captureResult.hidden = true;
-    DOM.captureNutrients.innerHTML = '';
-    return;
-  }
-  DOM.captureResult.hidden = false;
-  DOM.captureFoodName.value = state.captureParsed.name || DOM.captureFoodName.value || '';
-  DOM.captureBasis.value = state.captureParsed.basis || '100g';
-  DOM.captureServingSize.value = Number.isFinite(state.captureParsed.servingSize) ? state.captureParsed.servingSize : '';
-  DOM.captureServings.value = DOM.captureServings.value || '1';
-  const nutrientIds = Object.keys(state.captureParsed.nutrients || {}).slice(0, 12);
-  DOM.captureNutrients.innerHTML = nutrientIds.map((id) => `
-    <span class="nutrient-pill"><strong>${escapeHtml(nutrientDisplayName(id))}</strong><span>${escapeHtml(formatCompactNutrient(id, state.captureParsed.nutrients[id]))}</span></span>
-  `).join('');
-}
-
-function saveCaptureFoodToLibrary() {
-  if (!state.captureParsed) return;
-  const name = String(DOM.captureFoodName.value || '').trim() || '拍照识别食品';
-  const basis = DOM.captureBasis.value;
-  const servingSize = Number(DOM.captureServingSize.value) || null;
-  const per100 = convertParsedToPer100(state.captureParsed.nutrients || {}, basis, servingSize);
-  const labels = state.captureParsed.sourceFood ? normalizeFoodLabels(state.captureParsed.sourceFood) : buildCustomFoodLabels(name);
-  const customFood = normalizeCustomFood({
-    id: uid('custom'),
-    name,
-    code: state.captureParsed.code || '',
-    basis: servingSize ? '100g' : basis,
-    servingSize,
-    customPer100: per100,
-    labels,
-    library: state.foodLibrary === 'all' ? classifyFoodLibrary({ labels }) : state.foodLibrary,
-  });
-  if (!customFood) return;
-  state.customFoods = [customFood, ...state.customFoods.filter((item) => item.name !== customFood.name)].slice(0, 120);
-  state.searchQuery = name;
-  DOM.foodSearchInput.value = name;
-  persistState({ syncEligible: true });
-  renderAll();
-  DOM.captureStatus.textContent = '已存入食品库';
-}
-
-async function imageFileToDataUrl(file, { maxSide = 1280, quality = 0.86 } = {}) {
-  const { img, url } = await loadImage(file);
-  try {
-    const width0 = img.naturalWidth || img.width || 1;
-    const height0 = img.naturalHeight || img.height || 1;
-    const scale = Math.min(1, maxSide / Math.max(width0, height0));
-    const width = Math.max(1, Math.round(width0 * scale));
-    const height = Math.max(1, Math.round(height0 * scale));
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return '';
-    ctx.drawImage(img, 0, 0, width, height);
-    return canvas.toDataURL('image/jpeg', quality);
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
-function loadImageSource(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('图片读取失败'));
-    img.src = src;
-  });
-}
-
-async function estimatePhotoShapeFromDataUrl(dataUrl) {
-  const img = await loadImageSource(dataUrl);
-  const width = 240;
-  const height = Math.max(360, Math.round((img.naturalHeight || img.height || 1) / (img.naturalWidth || img.width || 1) * width));
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return null;
-  ctx.drawImage(img, 0, 0, width, height);
-  const imageData = ctx.getImageData(0, 0, width, height).data;
-  const gray = new Float32Array(width * height);
-  for (let i = 0; i < gray.length; i += 1) {
-    const idx = i * 4;
-    gray[i] = imageData[idx] * 0.299 + imageData[idx + 1] * 0.587 + imageData[idx + 2] * 0.114;
-  }
-  const borderPixels = [];
-  for (let x = 0; x < width; x += 1) {
-    borderPixels.push(gray[x], gray[(height - 1) * width + x]);
-  }
-  for (let y = 0; y < height; y += 1) {
-    borderPixels.push(gray[y * width], gray[y * width + width - 1]);
-  }
-  const borderAvg = borderPixels.reduce((sum, value) => sum + value, 0) / Math.max(1, borderPixels.length);
-  const mask = new Uint8Array(width * height);
-  for (let i = 0; i < gray.length; i += 1) {
-    mask[i] = Math.abs(gray[i] - borderAvg) > 18 ? 1 : 0;
-  }
-  const hit = (x, y) => {
-    let sum = 0;
-    for (let ry = -2; ry <= 2; ry += 1) {
-      for (let rx = -1; rx <= 1; rx += 1) {
-        const xx = clamp(Math.round(x + rx), 0, width - 1);
-        const yy = clamp(Math.round(y + ry), 0, height - 1);
-        sum += mask[yy * width + xx];
-      }
-    }
-    return sum >= 4;
-  };
-  const centerX = Math.round(width / 2);
-  const scanWidthAt = (ratio) => {
-    const y = clamp(Math.round(height * ratio), 4, height - 4);
-    let left = centerX;
-    let right = centerX;
-    while (left > 2 && !hit(left, y)) left -= 1;
-    while (left > 2 && hit(left - 1, y)) left -= 1;
-    while (right < width - 3 && !hit(right, y)) right += 1;
-    while (right < width - 3 && hit(right + 1, y)) right += 1;
-    return Math.max(10, right - left);
-  };
-  const rowMass = new Array(height).fill(0).map((_, y) => {
-    let count = 0;
-    for (let x = 0; x < width; x += 1) count += mask[y * width + x];
-    return count;
-  });
-  const top = rowMass.findIndex((count) => count > width * 0.08);
-  const bottom = (() => {
-    for (let y = height - 1; y >= 0; y -= 1) if (rowMass[y] > width * 0.08) return y;
-    return height - 1;
-  })();
-  const bodyHeight = Math.max(1, bottom - Math.max(0, top));
-  const shoulderW = scanWidthAt(0.27);
-  const chestW = scanWidthAt(0.38);
-  const waistW = scanWidthAt(0.54);
-  const hipW = scanWidthAt(0.66);
-  const legW = scanWidthAt(0.82);
-  const torsoBase = Math.max(chestW, hipW, 1);
-  const mapRatio = (value, min, max) => clamp(Math.round(100 + (value - min) / Math.max(0.0001, max - min) * 18), 84, 122);
-  const shoulder = mapRatio(shoulderW / torsoBase, 0.86, 1.12);
-  const chest = mapRatio(chestW / torsoBase, 0.88, 1.08);
-  const waist = clamp(Math.round(104 - ((waistW / torsoBase) - 0.76) * 40), 82, 118);
-  const hip = mapRatio(hipW / torsoBase, 0.86, 1.12);
-  const arm = clamp(Math.round(100 + ((shoulderW - chestW) / Math.max(1, torsoBase)) * 40), 84, 118);
-  const leg = clamp(Math.round(92 + ((bottom - height * 0.58) / Math.max(1, bodyHeight)) * 28 + ((legW / torsoBase) - 0.44) * 20), 88, 118);
-  if (![shoulder, chest, waist, hip, arm, leg].every((value) => Number.isFinite(value))) return null;
-  return {
-    shoulder: shoulder / 100,
-    chest: chest / 100,
-    waist: waist / 100,
-    hip: hip / 100,
-    arm: arm / 100,
-    leg: leg / 100,
-    hasPhoto: true,
-  };
-}
-
-async function autoEstimatePhotoShape() {
-  if (!state.photoRefUrl) {
-    DOM.photoShapeMeta.textContent = '请先上传正面全身照';
-    return;
-  }
-  DOM.photoShapeMeta.textContent = '正在估测轮廓…';
-  try {
-    const estimated = await estimatePhotoShapeFromDataUrl(state.photoRefUrl);
-    if (!estimated) throw new Error('轮廓不足');
-    state.photoShape = { ...normalizePhotoShape(state.photoShape), ...estimated };
-    fillPhotoDialog();
-    renderAll();
-    DOM.photoShapeMeta.textContent = '已根据照片轮廓自动估测，可继续微调';
-  } catch (error) {
-    DOM.photoShapeMeta.textContent = `自动估测失败：${error.message}`;
-  }
-}
-
-async function onPhotoSelected() {
-  const file = DOM.photoInput.files?.[0];
-  if (!file) return;
-  DOM.photoShapeMeta.textContent = '照片处理中…';
-  try {
-    state.photoRefUrl = await imageFileToDataUrl(file, { maxSide: 1280, quality: 0.86 });
-    state.photoShape.hasPhoto = Boolean(state.photoRefUrl);
-    DOM.photoPreview.src = state.photoRefUrl;
-    DOM.photoPreview.hidden = false;
-    renderPhotoRef();
-    persistState({ syncEligible: false });
-    await autoEstimatePhotoShape();
-  } catch (error) {
-    DOM.photoShapeMeta.textContent = `照片处理失败：${error.message}`;
-  }
-}
-
-function renderPhotoPreviewMeta() {
-  const values = {
-    shoulder: DOM.shapeShoulder.value,
-    chest: DOM.shapeChest.value,
-    waist: DOM.shapeWaist.value,
-    hip: DOM.shapeHip.value,
-    arm: DOM.shapeArm.value,
-    leg: DOM.shapeLeg.value,
-  };
-  DOM.photoShapeMeta.textContent = state.photoRefUrl
-    ? `肩 ${values.shoulder}% · 胸 ${values.chest}% · 腰 ${values.waist}% · 臀 ${values.hip}% · 肢 ${values.arm}% · 腿 ${values.leg}%`
-    : '上传全身照后可先自动估测，再手动微调模型。';
-}
-
-function resetPhotoShape() {
-  state.photoShape = { shoulder: 1, chest: 1, waist: 1, hip: 1, arm: 1, leg: 1, hasPhoto: Boolean(state.photoRefUrl) };
-  fillPhotoDialog();
-  renderAll();
-}
-
-function applyPhotoShape() {
-  state.photoShape.shoulder = clamp(Number(DOM.shapeShoulder.value) / 100 || 1, 0.8, 1.25);
-  state.photoShape.chest = clamp(Number(DOM.shapeChest.value) / 100 || 1, 0.82, 1.25);
-  state.photoShape.waist = clamp(Number(DOM.shapeWaist.value) / 100 || 1, 0.78, 1.22);
-  state.photoShape.hip = clamp(Number(DOM.shapeHip.value) / 100 || 1, 0.82, 1.26);
-  state.photoShape.arm = clamp(Number(DOM.shapeArm.value) / 100 || 1, 0.8, 1.22);
-  state.photoShape.leg = clamp(Number(DOM.shapeLeg.value) / 100 || 1, 0.85, 1.2);
-  state.photoShape.hasPhoto = Boolean(state.photoRefUrl);
-  DOM.photoDialog.close();
-  persistState({ syncEligible: false });
-  renderAll();
-}
-
-function onGitHubFieldChange() {
-  state.github.owner = String(DOM.ghOwner.value || '').trim() || DEFAULT_GITHUB.owner || 'kawhikun';
-  state.github.repo = String(DOM.ghRepo.value || '').trim() || DEFAULT_GITHUB.repo || 'haochijia';
-  state.github.branch = String(DOM.ghBranch.value || '').trim() || 'main';
-  state.github.path = String(DOM.ghPath.value || '').trim() || 'data/haochijia-user.json';
-  state.github.token = String(DOM.ghToken.value || '').trim();
-  state.github.autoSync = Boolean(DOM.ghAutoSync.checked);
-  persistState({ syncEligible: false });
-  renderGitHubStatus();
-}
-
-function exportAllData() {
-  const snapshot = makeSnapshot({ includeSecrets: false, includePhoto: true });
-  snapshot.exportMeta = {
-    exportedAt: new Date().toISOString(),
-    platform: state.platform.key,
-    bodyRecords: state.bodyHistory.length,
-    logDays: Object.keys(state.logs || {}).length,
-    customFoods: state.customFoods.length,
-  };
-  downloadJson(snapshot, `haochijia-complete-backup-${compactDateTime()}.json`);
-}
-
-async function pushLocalBackup(snapshot) {
-  const existing = await idbGet(V32_IDB_BACKUP_KEY).catch(() => []);
-  const list = Array.isArray(existing) ? existing : [];
-  const safe = {
-    ...snapshot,
-    ...(state.photoRefUrl ? { photoRefUrl: state.photoRefUrl } : {}),
-    github: { ...(snapshot.github || {}), token: '' },
-  };
-  const next = [safe, ...list.filter((item) => item.updatedAt !== safe.updatedAt)].slice(0, LOCAL_BACKUP_LIMIT);
-  state.localBackupMeta = next;
-  await idbSet(V32_IDB_BACKUP_KEY, next).catch(() => null);
-}
-
-async function restoreLatestLocalBackup() {
-  const list = Array.isArray(state.localBackupMeta) && state.localBackupMeta.length
-    ? state.localBackupMeta
-    : await idbGet(V32_IDB_BACKUP_KEY).catch(() => []);
-  if (!Array.isArray(list) || !list.length) {
-    DOM.bodyStatusHint.textContent = '没有可恢复的本地备份';
-    return;
-  }
-  importJsonSnapshot(JSON.stringify(list[0]), 'all');
-  DOM.bodyStatusHint.textContent = '已恢复最近本地备份';
-}
-
-async function requestPersistentStorage() {
-  if (!navigator.storage?.persist) {
-    DOM.persistStatus.textContent = '浏览器不支持';
-    return;
-  }
-  const granted = await navigator.storage.persist();
-  state.persistGranted = granted;
-  DOM.persistStatus.textContent = granted ? '更稳保存已开启' : '浏览器未授予';
-}
-
-async function updatePersistStatus() {
-  if (!navigator.storage?.persisted) {
-    DOM.persistStatus.textContent = '本地双存已开启';
-    return false;
-  }
-  state.persistGranted = await navigator.storage.persisted();
-  DOM.persistStatus.textContent = state.persistGranted ? '更稳保存已开启' : '本地双存已开启';
-  return state.persistGranted;
-}
-
-function persistState({ syncEligible = false } = {}) {
-  const snapshot = makeSnapshot({ includeSecrets: true, includePhoto: false });
-  V32_STORAGE_KEYS.forEach((key) => {
-    try {
-      localStorage.setItem(key, JSON.stringify(snapshot));
-    } catch {
-      // Ignore quota errors here; IndexedDB remains the primary backup mirror.
-    }
-  });
-  V32_IDB_SNAPSHOT_KEYS.forEach((key) => idbSet(key, snapshot).catch(() => null));
-  if (state.photoRefUrl) idbSet(IDB_PHOTO_KEY, state.photoRefUrl).catch(() => null);
-  else idbSet(IDB_PHOTO_KEY, '').catch(() => null);
-  if (syncEligible) {
-    pushLocalBackup(snapshot).catch(() => null);
-    scheduleGitHubSync();
-  }
-}
-
-function makeSnapshot({ includeSecrets = true, includePhoto = false } = {}) {
-  const snapshot = {
-    version: 'v31-premium',
-    updatedAt: new Date().toISOString(),
-    profile: {
-      ...readProfileForm(),
-      bodyFat: clamp(Number(DOM.profileForm.bodyFat.value) || 22, 2, 60),
-      focusNote: String(DOM.profileForm.focusNote.value || '').trim().slice(0, 120),
-    },
-    bodyHistory: normalizeBodyHistory(state.bodyHistory),
-    logs: state.logs,
-    customFoods: state.customFoods,
-    photoShape: state.photoShape,
-    preferences: {
-      foodLibrary: state.foodLibrary,
-      foodNameMode: state.foodNameMode,
-    },
-    github: {
-      owner: state.github.owner,
-      repo: state.github.repo,
-      branch: state.github.branch,
-      path: state.github.path,
-      autoSync: state.github.autoSync,
-      lastSyncAt: state.github.lastSyncAt || '',
-      lastSyncStatus: state.github.lastSyncStatus || '',
-      ...(includeSecrets ? { token: state.github.token } : {}),
-    },
-  };
-  if (includePhoto && state.photoRefUrl) snapshot.photoRefUrl = state.photoRefUrl;
-  return snapshot;
-}
-
-function readGitHubConfig() {
-  return {
-    owner: String(state.github.owner || DEFAULT_GITHUB.owner || 'kawhikun').trim() || 'kawhikun',
-    repo: String(state.github.repo || DEFAULT_GITHUB.repo || 'haochijia').trim() || 'haochijia',
-    branch: String(state.github.branch || 'main').trim() || 'main',
-    path: String(state.github.path || 'data/haochijia-user.json').trim() || 'data/haochijia-user.json',
-    token: String(state.github.token || '').trim(),
-  };
-}
-
-async function syncToGitHub(manual = false) {
-  try {
-    const config = readGitHubConfig();
-    ensureGitHubConfig(config, true);
-    const snapshot = makeSnapshot({ includeSecrets: false, includePhoto: true });
-    const existing = await githubReadFile(config).catch((error) => {
-      if (error.status === 404) return null;
-      throw error;
-    });
-    await githubWriteFile(config, snapshot, existing?.sha || '');
-    state.github.lastSyncAt = new Date().toISOString();
-    state.github.lastSyncStatus = 'success';
-    DOM.githubStatus.textContent = `已同步 ${formatTime(state.github.lastSyncAt)}`;
-    persistState({ syncEligible: false });
-  } catch (error) {
-    state.github.lastSyncStatus = error.message;
-    DOM.githubStatus.textContent = `GitHub 失败：${error.message}`;
-    if (manual) throw error;
-  }
-}
-
-async function restoreFromGitHub() {
-  try {
-    const config = readGitHubConfig();
-    ensureGitHubConfig(config, false);
-    const existing = await githubReadFile(config);
-    if (!existing?.content) throw new Error('云端没有数据');
-    const json = decodeBase64Unicode(existing.content);
-    importJsonSnapshot(json, 'all');
-    state.github.lastSyncStatus = 'success';
-    DOM.githubStatus.textContent = '已从 GitHub 恢复';
-  } catch (error) {
-    state.github.lastSyncStatus = error.message;
-    DOM.githubStatus.textContent = `恢复失败：${error.message}`;
-  }
-}
-
-/* ===== v32 final aesthetic + data + dual-bank override ===== */
-const V32_BUILD_VERSION = 'v32-polished-core';
-const V32_FOOD_BANK_FILES = Object.freeze({
-  cn: ['./data/foods-cn.min.json'],
-  intl: ['./data/foods-global.part01.min.json', './data/foods-global.part02.min.json'],
-});
-
-state.version = V32_BUILD_VERSION;
-state.foodBanks = state.foodBanks && typeof state.foodBanks === 'object' ? state.foodBanks : { cn: [], intl: [] };
-state.foodBankLoaded = state.foodBankLoaded && typeof state.foodBankLoaded === 'object' ? state.foodBankLoaded : { cn: false, intl: false };
-state.foodBankPromises = state.foodBankPromises && typeof state.foodBankPromises === 'object' ? state.foodBankPromises : { cn: null, intl: null };
-state.foodBankCounts = state.foodBankCounts && typeof state.foodBankCounts === 'object' ? state.foodBankCounts : { cn: 0, intl: 0 };
-DISPLAY_LABELS.vitaminK = '维生素 K1/K2';
-
-function bindDom() {
-  const ids = [
-    'appShell', 'platformBadge', 'menuBtn', 'heroStage', 'bodyCanvas', 'stagePhotoRef', 'focusModePill', 'focusModeText', 'ringOrbit',
-    'profileForm', 'bodyForm', 'bodyStatusHint', 'importBodyBtn', 'saveBodyBtn', 'photoShapeBtn', 'suggestionSummary', 'suggestionCards',
-    'bodyHistoryList', 'bodyHistoryMeta', 'foodSearchStatus', 'foodSearchInput', 'foodAmountInput', 'foodSearchResults', 'captureInput',
-    'runBarcodeBtn', 'runOcrBtn', 'capturePreview', 'captureStatus', 'captureResult', 'captureFoodName', 'captureBasis', 'captureServingSize',
-    'captureServings', 'captureNutrients', 'addCaptureFoodBtn', 'saveCaptureFoodBtn', 'progressList', 'dayTotalBadge', 'logList', 'clearDayBtn',
-    'photoDialog', 'photoInput', 'photoPreview', 'photoAutoBtn', 'photoShapeMeta', 'shapeShoulder', 'shapeChest', 'shapeWaist', 'shapeHip', 'shapeArm', 'shapeLeg', 'photoResetBtn', 'photoApplyBtn',
-    'dataDialog', 'persistStatus', 'localBackupMeta', 'restoreLocalBtn', 'importAllBtn', 'exportAllBtn', 'bodyJsonBtn', 'bodyCsvBtn', 'intakeCsvBtn', 'persistBtn', 'githubStatus', 'ghOwner', 'ghRepo', 'ghBranch',
-    'ghPath', 'ghToken', 'ghAutoSync', 'ghRestoreBtn', 'ghSyncBtn', 'importInput', 'foodRegionGroup', 'foodLanguageGroup'
-  ];
-  ids.forEach((id) => { DOM[id] = document.getElementById(id); });
-}
-
-async function init() {
-  bindDom();
-  document.body.dataset.platform = state.platform.key;
-  DOM.platformBadge.textContent = state.platform.label;
-  await loadState();
-  fillFormsFromState();
-  bindEvents();
-  state.model = createBodyModelController(DOM.bodyCanvas, {
-    platformKey: state.platform.key,
-    onLongPress: () => activateTab('body'),
-    onViewReset: () => {
-      DOM.focusModeText.textContent = `${nutrientDisplayName(state.activeRing)} 高亮 · 视角已回正`;
-      window.setTimeout(() => renderHeroMeta(), 900);
-    },
-  });
-  await state.model.ready;
-  registerServiceWorker();
-  requestIdleLoadFoods();
-  renderAll();
-  await updatePersistStatus();
-  renderLocalBackupMeta();
-}
-
-function bindEvents() {
-  document.querySelectorAll('.tab-btn').forEach((btn) => {
-    btn.addEventListener('click', () => activateTab(btn.dataset.tab || 'body'));
-  });
-
-  DOM.menuBtn.addEventListener('click', () => DOM.dataDialog.showModal());
-  DOM.photoShapeBtn.addEventListener('click', () => {
-    fillPhotoDialog();
-    DOM.photoDialog.showModal();
-  });
-  DOM.importBodyBtn.addEventListener('click', () => {
-    DOM.importInput.dataset.mode = 'body';
-    DOM.importInput.click();
-  });
-  DOM.importAllBtn.addEventListener('click', () => {
-    DOM.importInput.dataset.mode = 'all';
-    DOM.importInput.click();
-  });
-  DOM.importInput.addEventListener('change', onImportSelected);
-
-  DOM.profileForm.addEventListener('input', onProfileInput);
-  DOM.profileForm.addEventListener('change', onProfileInput);
-  DOM.bodyForm.addEventListener('input', onBodyInput);
-  DOM.bodyForm.addEventListener('change', onBodyInput);
-  DOM.saveBodyBtn.addEventListener('click', saveBodyRecord);
-
-  DOM.foodSearchInput.addEventListener('input', onFoodSearchInput);
-  DOM.foodSearchInput.addEventListener('focus', async () => {
-    await ensureFoodsLoaded().catch(() => null);
-    renderFoodSearchResults();
-  });
-  DOM.foodAmountInput.addEventListener('input', renderFoodSearchResults);
-  DOM.foodSearchResults.addEventListener('click', onFoodResultsClick);
-  DOM.foodRegionGroup?.addEventListener('click', async (event) => {
-    const btn = event.target.closest('[data-food-region]');
-    if (!btn) return;
-    const nextLibrary = FOOD_REGION_OPTIONS.has(btn.dataset.foodRegion) ? btn.dataset.foodRegion : 'all';
-    if (state.foodLibrary === nextLibrary) return;
-    state.foodLibrary = nextLibrary;
-    persistState({ syncEligible: false });
-    await ensureFoodsLoaded().catch(() => null);
-    if (state.searchQuery.trim()) state.searchResults = searchFoods(state.searchQuery).slice(0, FOOD_SEARCH_LIMIT);
-    renderAll();
-  });
-  DOM.foodLanguageGroup?.addEventListener('click', (event) => {
-    const btn = event.target.closest('[data-food-lang]');
-    if (!btn) return;
-    state.foodNameMode = FOOD_NAME_MODE_OPTIONS.has(btn.dataset.foodLang) ? btn.dataset.foodLang : 'zh';
-    if (state.searchQuery.trim()) state.searchResults = searchFoods(state.searchQuery).slice(0, FOOD_SEARCH_LIMIT);
-    persistState({ syncEligible: false });
-    renderAll();
-  });
-
-  DOM.captureInput.addEventListener('change', updateCapturePreview);
-  DOM.runBarcodeBtn.addEventListener('click', runBarcodeSearch);
-  DOM.runOcrBtn.addEventListener('click', runOcrSearch);
-  DOM.captureBasis.addEventListener('change', renderCaptureResult);
-  DOM.addCaptureFoodBtn.addEventListener('click', addCaptureFoodToToday);
-  DOM.saveCaptureFoodBtn.addEventListener('click', saveCaptureFoodToLibrary);
-
-  DOM.logList.addEventListener('click', onLogListClick);
-  DOM.bodyHistoryList.addEventListener('click', onBodyHistoryClick);
-  DOM.clearDayBtn.addEventListener('click', clearTodayLog);
-
-  DOM.photoInput.addEventListener('change', onPhotoSelected);
-  ['shapeShoulder', 'shapeChest', 'shapeWaist', 'shapeHip', 'shapeArm', 'shapeLeg'].forEach((id) => {
-    DOM[id].addEventListener('input', renderPhotoPreviewMeta);
-  });
-  DOM.photoAutoBtn?.addEventListener('click', autoEstimatePhotoShape);
-  DOM.photoResetBtn.addEventListener('click', resetPhotoShape);
-  DOM.photoApplyBtn.addEventListener('click', applyPhotoShape);
-
-  DOM.exportAllBtn.addEventListener('click', exportAllData);
-  DOM.bodyJsonBtn?.addEventListener('click', exportBodyJson);
-  DOM.bodyCsvBtn.addEventListener('click', exportBodyCsv);
-  DOM.intakeCsvBtn?.addEventListener('click', exportIntakeCsv);
-  DOM.restoreLocalBtn?.addEventListener('click', restoreLatestLocalBackup);
-  DOM.persistBtn.addEventListener('click', requestPersistentStorage);
-  DOM.ghSyncBtn.addEventListener('click', () => syncToGitHub(true).catch(() => null));
-  DOM.ghRestoreBtn.addEventListener('click', restoreFromGitHub);
-  ['ghOwner', 'ghRepo', 'ghBranch', 'ghPath', 'ghToken', 'ghAutoSync'].forEach((id) => {
-    DOM[id].addEventListener('input', onGitHubFieldChange);
-    DOM[id].addEventListener('change', onGitHubFieldChange);
-  });
-
-  DOM.ringOrbit.addEventListener('click', (event) => {
-    const btn = event.target.closest('[data-ring-id]');
-    if (!btn) return;
-    state.activeRing = btn.dataset.ringId || state.activeRing;
-    state.model?.setFocusField(RING_FIELD_MAP[state.activeRing] || '');
-    state.model?.setAccentColor?.(RING_COLORS[state.activeRing] || '#6c8fa9');
-    renderHeroRings();
-    renderHeroMeta();
-  });
-}
-
-function activeFoodLibraries() {
-  return state.foodLibrary === 'cn' ? ['cn'] : state.foodLibrary === 'intl' ? ['intl'] : ['cn', 'intl'];
-}
-
-function libraryTagLabel(library) {
-  return library === 'cn' ? '中文库' : '国际库';
-}
-
-function foodBankSummaryText() {
-  const cnCount = state.foodBankCounts?.cn || 0;
-  const intlCount = state.foodBankCounts?.intl || 0;
-  if (state.foodLibrary === 'cn') return `中文库 ${cnCount.toLocaleString('zh-CN')} 条`;
-  if (state.foodLibrary === 'intl') return `国际库 ${intlCount.toLocaleString('zh-CN')} 条`;
-  return `双食品库 · 中文 ${cnCount.toLocaleString('zh-CN')} · 国际 ${intlCount.toLocaleString('zh-CN')}`;
-}
-
-function mergeFoodBanks() {
-  const libs = activeFoodLibraries();
-  state.foods = libs.flatMap((lib) => state.foodBanks?.[lib] || []);
-  state.foodsLoaded = libs.every((lib) => Boolean(state.foodBankLoaded?.[lib]));
-  return state.foods;
-}
-
-async function ensureFoodBankLoaded(library) {
-  const files = V32_FOOD_BANK_FILES[library];
-  if (!files?.length) return [];
-  if (state.foodBankLoaded?.[library]) return state.foodBanks[library] || [];
-  if (state.foodBankPromises?.[library]) return state.foodBankPromises[library];
-  state.foodBankPromises[library] = (async () => {
-    const foods = [];
-    for (let i = 0; i < files.length; i += 1) {
-      if (DOM.foodSearchStatus) {
-        DOM.foodSearchStatus.textContent = `${libraryTagLabel(library)}加载中 · ${i + 1}/${files.length}`;
-      }
-      const response = await fetch(files[i], { cache: 'force-cache' });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const chunk = await response.json();
-      const list = Array.isArray(chunk) ? chunk : [];
-      foods.push(...list.map((food) => prepareFood(food, library)));
-    }
-    state.foodBanks[library] = foods;
-    state.foodBankCounts[library] = foods.length;
-    state.foodBankLoaded[library] = true;
-    state.foodBankPromises[library] = null;
-    mergeFoodBanks();
-    return foods;
-  })().catch((error) => {
-    state.foodBankPromises[library] = null;
-    throw error;
-  });
-  return state.foodBankPromises[library];
-}
-
-async function ensureAllFoodBanksLoaded() {
-  await Promise.all(['cn', 'intl'].map((lib) => ensureFoodBankLoaded(lib)));
-  mergeFoodBanks();
-  return [...(state.foodBanks.cn || []), ...(state.foodBanks.intl || [])];
-}
-
-async function ensureFoodsLoaded() {
-  const libs = activeFoodLibraries();
-  state.foodsLoading = true;
-  if (DOM.foodSearchStatus) DOM.foodSearchStatus.textContent = '食品库加载中…';
-  try {
-    await Promise.all(libs.map((lib) => ensureFoodBankLoaded(lib)));
-    mergeFoodBanks();
-    state.foodsLoading = false;
-    if (DOM.foodSearchStatus) DOM.foodSearchStatus.textContent = foodBankSummaryText();
-    return state.foods;
-  } catch (error) {
-    state.foodsLoading = false;
-    throw error;
-  }
-}
-
-function requestIdleLoadFoods() {
-  const run = async () => {
-    const first = state.foodLibrary === 'intl' ? 'intl' : 'cn';
-    const second = first === 'cn' ? 'intl' : 'cn';
-    await ensureFoodBankLoaded(first).catch(() => null);
-    window.setTimeout(() => ensureFoodBankLoaded(second).catch(() => null), 1200);
-  };
-  if ('requestIdleCallback' in window) window.requestIdleCallback(run, { timeout: 2400 });
-  else window.setTimeout(run, 900);
-}
-
-function normalizeFoodLabels(raw) {
-  const source = raw?.labels ? raw.labels : raw || {};
-  const name = String(raw?.name || raw?.label || raw?.z || raw?.n || '').trim();
-  const original = String(source.original || raw?.n || raw?.name || raw?.label || name || '').trim();
-  const zh = String(source.zh || raw?.z || raw?.name || raw?.label || original || '').trim();
-  const explicitEn = String(source.en || '').trim();
-  const en = explicitEn || (/[A-Za-z]/.test(original) ? original : (/[A-Za-z]/.test(name) ? name : ''));
-  return {
-    zh: zh || original || en || name || '未命名食品',
-    en: en || original || zh || name || 'Unnamed food',
-    original: original || zh || en || name || 'Unnamed food',
-  };
-}
-
-function buildFoodSearchText(food) {
-  const labels = normalizeFoodLabels(food);
-  return normalizeText([
-    labels.zh,
-    labels.en,
-    labels.original,
-    food?.code || food?.c || '',
-    food?.b || '',
-    food?.g || '',
-    food?.q || '',
-    food?.z || '',
-    food?.n || '',
-    food?.labels?.es || '',
-  ].join(' '));
-}
-
-function prepareFood(food, libraryHint = '') {
-  const labels = normalizeFoodLabels(food);
-  food.labels = { ...(food.labels || {}), ...labels };
-  food.code = String(food.code || food.c || '').trim();
-  food.library = libraryHint || food.library || classifyFoodLibrary(food);
-  food._displayName = labels.zh;
-  food._search = buildFoodSearchText(food);
-  return food;
-}
-
-function foodPool() {
-  const libs = activeFoodLibraries();
-  const customFoods = state.customFoods
-    .map((food) => prepareFood(food, food.library || classifyFoodLibrary(food)))
-    .filter((food) => state.foodLibrary === 'all' || food.library === state.foodLibrary);
-  const libraryFoods = libs.flatMap((lib) => state.foodBanks?.[lib] || []);
-  return [...customFoods, ...libraryFoods];
-}
-
-function foodAltNames(food, mode = state.foodNameMode) {
-  const labels = normalizeFoodLabels(food);
-  const primary = normalizeText(foodDisplayNameForMode(food, mode));
-  const candidates = mode === 'zh'
-    ? [labels.en, labels.original]
-    : mode === 'en'
-      ? [labels.zh, labels.original]
-      : [labels.zh, labels.en];
-  const out = [];
-  candidates.forEach((value) => {
-    const text = String(value || '').trim();
-    if (!text) return;
-    if (normalizeText(text) === primary) return;
-    if (out.some((item) => normalizeText(item) === normalizeText(text))) return;
-    out.push(text);
-  });
-  return out.slice(0, 2);
-}
-
-function foodSecondaryName(food, mode = state.foodNameMode) {
-  return foodAltNames(food, mode).join(' / ');
-}
-
-function renderSearchPlaceholder() {
-  const recent = recentFoods(6);
-  if (!recent.length) {
-    const summary = state.foodBankLoaded.cn || state.foodBankLoaded.intl ? `\n${foodBankSummaryText()}` : '';
-    return `<div class="empty-state">输入食品名 / EN / 原始名 / 品牌 / 条码${summary ? `<br><span class="history-meta">${escapeHtml(summary)}</span>` : ''}</div>`;
-  }
-  return recent.map((food, index) => {
-    const secondary = foodSecondaryName(food);
-    return `
-      <article class="food-item">
-        <strong>${escapeHtml(foodDisplayName(food))}</strong>
-        <div class="food-meta">${secondary ? `<div class="history-meta">${escapeHtml(secondary)}</div>` : '最近使用'}</div>
-        <div class="food-actions">
-          <button type="button" class="ghost-btn tiny-btn" data-recent-food-index="${index}">再次加入</button>
-        </div>
-      </article>`;
-  }).join('');
-}
-
-function renderFoodSearchResults() {
-  renderFilterButtons();
-  if (!state.searchQuery.trim()) {
-    DOM.foodSearchResults.innerHTML = renderSearchPlaceholder();
-    return;
-  }
-  if (state.foodsLoading && !state.foodsLoaded) {
-    DOM.foodSearchResults.innerHTML = '<div class="empty-state">食品库加载中…</div>';
-    return;
-  }
-  if (!state.searchResults.length) {
-    DOM.foodSearchResults.innerHTML = '<div class="empty-state">没有找到匹配项</div>';
-    return;
-  }
-  const amount = clamp(Number(DOM.foodAmountInput.value) || 100, 1, 3000);
-  DOM.foodSearchResults.innerHTML = state.searchResults.map((food, index) => {
-    const per100 = nutrientsForFood(food);
-    const secondary = foodSecondaryName(food);
-    const tags = [
-      `<span class="food-tag ${food.library === 'cn' ? 'cn' : 'intl'}">${libraryTagLabel(food.library)}</span>`,
-      food.customPer100 ? '<span class="food-tag custom">自定义</span>' : '',
-      food.code ? `<span class="food-tag">${escapeHtml(food.code)}</span>` : '',
-    ].filter(Boolean).join('');
-    return `
-      <article class="food-item">
-        <strong>${escapeHtml(foodDisplayName(food))}</strong>
-        <div class="food-meta">
-          ${secondary ? `<div class="history-meta">${escapeHtml(secondary)}</div>` : ''}
-          <div>每 100：${escapeHtml(formatCompactNutrient('kcal', per100.kcal || 0))} · ${escapeHtml(formatCompactNutrient('protein', per100.protein || 0))} · ${escapeHtml(formatCompactNutrient('carbs', per100.carbs || 0))} · ${escapeHtml(formatCompactNutrient('fat', per100.fat || 0))}</div>
-          <div class="food-tags">${tags}</div>
-        </div>
-        <div class="food-actions">
-          <button type="button" class="primary-btn tiny-btn" data-add-food-index="${index}" data-add-food-amount="${amount}">加入 ${amount}g</button>
-          ${food.code ? `<button type="button" class="ghost-btn tiny-btn" data-search-code="${escapeHtml(food.code)}">${escapeHtml(food.code)}</button>` : ''}
-        </div>
-      </article>`;
-  }).join('');
-}
-
-function renderLogList() {
-  const items = getDayLog(state.activeDate).items;
-  if (!items.length) {
-    DOM.logList.innerHTML = '<div class="empty-state">今天还没有记录</div>';
-    return;
-  }
-  DOM.logList.innerHTML = items.map((item, index) => {
-    const secondary = foodSecondaryName(item);
-    return `
-      <article class="log-item">
-        <strong>${escapeHtml(logItemDisplayName(item))}</strong>
-        ${secondary ? `<div class="history-meta">${escapeHtml(secondary)}</div>` : ''}
-        <div class="log-meta">${escapeHtml(formatTime(item.createdAt))}${item.grams ? ` · ${item.grams}g` : ''} · ${escapeHtml(formatCompactNutrient('kcal', item.nutrients.kcal || 0))}</div>
-        <div class="log-actions">
-          <button type="button" class="ghost-btn tiny-btn" data-remove-log-index="${index}">删除</button>
-        </div>
-      </article>`;
-  }).join('');
-}
-
-function renderHeroMeta() {
-  const platformText = state.platform.key === 'ios' ? 'iPhone 人体舞台' : state.platform.key === 'android' ? 'Android 人体舞台' : '人体舞台';
-  DOM.focusModePill.textContent = `${platformText} · 6 环联动`;
-  DOM.focusModeText.textContent = `${nutrientDisplayName(state.activeRing)} 高亮 · 拖旋 / 缩放 / 双击回正 / 长按身体记录`;
-}
-
-function ringLayoutPoints(width, height) {
-  const small = width < 392;
-  const midY = small ? 0.42 : 0.41;
-  return [
-    { x: width * (small ? 0.18 : 0.17), y: height * 0.17 },
-    { x: width * (small ? 0.82 : 0.83), y: height * 0.17 },
-    { x: width * (small ? 0.90 : 0.91), y: height * midY },
-    { x: width * (small ? 0.82 : 0.83), y: height * 0.77 },
-    { x: width * (small ? 0.18 : 0.17), y: height * 0.77 },
-    { x: width * (small ? 0.10 : 0.09), y: height * midY },
-  ];
-}
-
-function renderHeroRings() {
-  if (!DOM.ringOrbit) return;
-  const ringData = buildHeroRingData();
-  const rect = DOM.heroStage?.getBoundingClientRect?.() || DOM.ringOrbit.getBoundingClientRect();
-  const width = rect.width || 360;
-  const height = rect.height || 520;
-  const points = ringLayoutPoints(width, height);
-  DOM.ringOrbit.innerHTML = '';
-  ringData.forEach((ring, index) => {
-    const point = points[index] || points[points.length - 1];
-    const active = ring.id === state.activeRing;
-    const size = active ? (width < 390 ? 86 : 94) : (ring.focus ? (width < 390 ? 80 : 88) : (width < 390 ? 76 : 82));
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = `nutri-ring${ring.focus ? ' is-focus' : ''}${active ? ' is-active' : ''}`;
-    button.dataset.ringId = ring.id;
-    button.style.left = `${point.x}px`;
-    button.style.top = `${point.y}px`;
-    button.style.transform = 'translate(-50%, -50%)';
-    button.style.width = `${size}px`;
-    button.style.height = `${size}px`;
-    button.style.setProperty('--ring-color', ring.color);
-    button.style.setProperty('--ring-pct', `${Math.max(0, Math.min(100, ring.percent))}%`);
-    button.innerHTML = `
-      <span class="ring-inner">
-        <span>
-          <strong>${escapeHtml(ring.label)}</strong>
-          <span class="ring-percent">${Math.round(ring.percent)}%</span>
-          <span class="ring-meta">${escapeHtml(ring.meta)}</span>
-        </span>
-      </span>`;
-    DOM.ringOrbit.appendChild(button);
-  });
-}
-
-function renderLocalBackupMeta() {
-  if (!DOM.localBackupMeta) return;
-  const list = Array.isArray(state.localBackupMeta) ? state.localBackupMeta : [];
-  if (!list.length) {
-    DOM.localBackupMeta.textContent = '本地三重兜底：localStorage + IndexedDB + 最近备份';
-    return;
-  }
-  DOM.localBackupMeta.textContent = `本地三重兜底 · 最近 ${list.length} 份 · 最新 ${formatDateTime(list[0].updatedAt)}`;
-}
-
-function renderGitHubStatus() {
-  const ok = state.github.owner && state.github.repo && state.github.path;
-  if (!ok) {
-    DOM.githubStatus.textContent = '未配置';
-    return;
-  }
-  const synced = state.github.lastSyncStatus === 'success' && state.github.lastSyncAt
-    ? `已同步 ${formatTime(state.github.lastSyncAt)}`
-    : '未同步';
-  DOM.githubStatus.textContent = `${state.github.owner}/${state.github.repo} · ${synced}`;
-}
-
-function onFoodSearchInput() {
-  state.searchQuery = String(DOM.foodSearchInput.value || '').trim();
-  if (!state.searchQuery) {
-    state.searchResults = [];
-    DOM.foodSearchStatus.textContent = state.foodBankLoaded.cn || state.foodBankLoaded.intl ? foodBankSummaryText() : '待输入';
-    renderFoodSearchResults();
-    return;
-  }
-  ensureFoodsLoaded().then(() => {
-    state.searchResults = searchFoods(state.searchQuery).slice(0, FOOD_SEARCH_LIMIT);
-    DOM.foodSearchStatus.textContent = `找到 ${state.searchResults.length} 项 · ${foodBankSummaryText()}`;
-    renderFoodSearchResults();
-  }).catch((error) => {
-    DOM.foodSearchStatus.textContent = `食品库失败：${error.message}`;
-  });
-}
-
-async function runBarcodeSearch() {
-  const file = DOM.captureInput.files?.[0];
-  if (!file) {
-    DOM.captureStatus.textContent = '请先选择图片';
-    return;
-  }
-  DOM.captureStatus.textContent = '条码识别中…';
-  try {
-    const prepared = await prepareRecognitionImage(file, 'smart');
-    let code = await detectBarcodeNative(prepared).catch(() => '');
-    if (!code) code = await detectBarcodeZXing(prepared).catch(() => '');
-    if (!code) {
-      DOM.captureStatus.textContent = '没有识别到条码';
-      return;
-    }
-    DOM.captureStatus.textContent = `条码 ${code}`;
-    await ensureAllFoodBanksLoaded();
-    const allFoods = [
-      ...state.customFoods.map((food) => prepareFood(food, food.library || classifyFoodLibrary(food))),
-      ...(state.foodBanks.cn || []),
-      ...(state.foodBanks.intl || []),
-    ];
-    const hit = allFoods.find((food) => String(food.code || '') === String(code));
-    if (hit) {
-      state.captureParsed = {
-        name: foodDisplayName(hit),
-        basis: '100g',
-        servingSize: hit.servingSize || '',
-        nutrients: nutrientsForFood(hit),
-        code,
-        sourceFood: hit,
-      };
-      renderCaptureResult();
-    } else {
-      state.captureParsed = {
-        name: code,
-        basis: '100g',
-        servingSize: '',
-        nutrients: {},
-        code,
-      };
-      renderCaptureResult();
-    }
-  } catch (error) {
-    DOM.captureStatus.textContent = `条码失败：${error.message}`;
-  }
-}
-
-function renderPhotoPreviewMeta() {
-  const values = {
-    shoulder: DOM.shapeShoulder.value,
-    chest: DOM.shapeChest.value,
-    waist: DOM.shapeWaist.value,
-    hip: DOM.shapeHip.value,
-    arm: DOM.shapeArm.value,
-    leg: DOM.shapeLeg.value,
-  };
-  DOM.photoShapeMeta.textContent = state.photoRefUrl
-    ? `6 维塑形 · 肩 ${values.shoulder}% · 胸 ${values.chest}% · 腰 ${values.waist}% · 臀 ${values.hip}% · 肢 ${values.arm}% · 腿 ${values.leg}%`
-    : '上传正面全身照后会先自动估测，再保留 6 维手动微调。';
-}
-
-function exportBodyJson() {
-  const payload = {
-    version: V32_BUILD_VERSION,
-    updatedAt: new Date().toISOString(),
-    profile: {
-      ...readProfileForm(),
-      bodyFat: clamp(Number(DOM.profileForm.bodyFat.value) || 22, 2, 60),
-      focusNote: String(DOM.profileForm.focusNote.value || '').trim().slice(0, 120),
-    },
-    photoShape: state.photoShape,
-    bodyHistory: normalizeBodyHistory(state.bodyHistory),
-  };
-  downloadJson(payload, `haochijia-body-${compactDateTime()}.json`);
-}
-
-function exportIntakeCsv() {
-  const rows = [[
-    'date', 'time', 'label', 'zh', 'en', 'original', 'library', 'code', 'grams',
-    'kcal', 'protein', 'carbs', 'fat', 'fiber', 'calcium', 'iron'
-  ].join(',')];
-  const days = Object.keys(state.logs || {}).sort();
-  days.forEach((date) => {
-    const items = state.logs?.[date]?.items || [];
-    items.forEach((item) => {
-      const labels = normalizeFoodLabels(item);
-      rows.push([
-        csvEscape(date),
-        csvEscape(item.createdAt || ''),
-        csvEscape(item.label || labels.zh || ''),
-        csvEscape(labels.zh || ''),
-        csvEscape(labels.en || ''),
-        csvEscape(labels.original || ''),
-        csvEscape(item.library || ''),
-        csvEscape(item.code || ''),
-        csvEscape(item.grams ?? ''),
-        csvEscape(item.nutrients?.kcal ?? ''),
-        csvEscape(item.nutrients?.protein ?? ''),
-        csvEscape(item.nutrients?.carbs ?? ''),
-        csvEscape(item.nutrients?.fat ?? ''),
-        csvEscape(item.nutrients?.fiber ?? ''),
-        csvEscape(item.nutrients?.calcium ?? ''),
-        csvEscape(item.nutrients?.iron ?? ''),
-      ].join(','));
-    });
-  });
-  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
-  downloadBlob(blob, `haochijia-intake-${compactDateTime()}.csv`);
-}
-
-function exportAllData() {
-  const snapshot = makeSnapshot({ includeSecrets: false, includePhoto: true });
-  snapshot.version = V32_BUILD_VERSION;
-  snapshot.exportMeta = {
-    exportedAt: new Date().toISOString(),
-    platform: state.platform.key,
-    bodyRecords: state.bodyHistory.length,
-    logDays: Object.keys(state.logs || {}).length,
-    customFoods: state.customFoods.length,
-    foodBanksLoaded: {
-      cn: Boolean(state.foodBankLoaded?.cn),
-      intl: Boolean(state.foodBankLoaded?.intl),
-    },
-  };
-  downloadJson(snapshot, `haochijia-complete-backup-${compactDateTime()}.json`);
-}
-
-function createDefaultSnapshot() {
-  return {
-    version: V32_BUILD_VERSION,
-    updatedAt: new Date().toISOString(),
-    profile: { ...defaultProfile(), bodyFat: 22, focusNote: '' },
-    bodyHistory: [],
-    logs: {},
-    customFoods: [],
-    photoShape: { shoulder: 1, chest: 1, waist: 1, hip: 1, arm: 1, leg: 1, hasPhoto: false },
-    preferences: { foodLibrary: 'all', foodNameMode: 'zh' },
-    github: resolveGitHubSnapshot({}),
-  };
-}
-
-function makeSnapshot({ includeSecrets = true, includePhoto = false } = {}) {
-  const snapshot = {
-    version: V32_BUILD_VERSION,
-    updatedAt: new Date().toISOString(),
-    profile: {
-      ...readProfileForm(),
-      bodyFat: clamp(Number(DOM.profileForm.bodyFat.value) || 22, 2, 60),
-      focusNote: String(DOM.profileForm.focusNote.value || '').trim().slice(0, 120),
-    },
-    bodyHistory: normalizeBodyHistory(state.bodyHistory),
-    logs: state.logs,
-    customFoods: state.customFoods,
-    photoShape: state.photoShape,
-    preferences: {
-      foodLibrary: state.foodLibrary,
-      foodNameMode: state.foodNameMode,
-    },
-    github: {
-      owner: state.github.owner,
-      repo: state.github.repo,
-      branch: state.github.branch,
-      path: state.github.path,
-      autoSync: state.github.autoSync,
-      lastSyncAt: state.github.lastSyncAt || '',
-      lastSyncStatus: state.github.lastSyncStatus || '',
-      ...(includeSecrets ? { token: state.github.token } : {}),
-    },
-  };
-  if (includePhoto && state.photoRefUrl) snapshot.photoRefUrl = state.photoRefUrl;
-  return snapshot;
-}
-
-async function updatePersistStatus() {
-  if (!navigator.storage?.persisted) {
-    DOM.persistStatus.textContent = 'localStorage + IndexedDB 已开启';
-    return false;
-  }
-  state.persistGranted = await navigator.storage.persisted();
-  DOM.persistStatus.textContent = state.persistGranted ? '本地三重保存已开启' : 'localStorage + IndexedDB 已开启';
-  return state.persistGranted;
 }

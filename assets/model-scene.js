@@ -15,12 +15,41 @@ function perfProfile() {
   };
 }
 
+async function importThreeProvider(threeUrl, controlsUrl) {
+  const [THREE, controls] = await Promise.all([
+    import(threeUrl),
+    import(controlsUrl),
+  ]);
+  return { THREE, OrbitControls: controls.OrbitControls };
+}
+
 function loadRemoteModules() {
   if (!remoteModulesPromise) {
-    remoteModulesPromise = Promise.all([
-      import('https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js'),
-      import('https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/controls/OrbitControls.js'),
-    ]).then(([THREE, controls]) => ({ THREE, OrbitControls: controls.OrbitControls }));
+    const providers = [
+      {
+        three: 'https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js',
+        controls: 'https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/controls/OrbitControls.js',
+      },
+      {
+        three: 'https://unpkg.com/three@0.161.0/build/three.module.js?module',
+        controls: 'https://unpkg.com/three@0.161.0/examples/jsm/controls/OrbitControls.js?module',
+      },
+      {
+        three: 'https://esm.sh/three@0.161.0',
+        controls: 'https://esm.sh/three@0.161.0/examples/jsm/controls/OrbitControls',
+      },
+    ];
+    remoteModulesPromise = (async () => {
+      let lastError = null;
+      for (const provider of providers) {
+        try {
+          return await importThreeProvider(provider.three, provider.controls);
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      throw lastError || new Error('Three.js CDN unavailable');
+    })();
   }
   return remoteModulesPromise;
 }

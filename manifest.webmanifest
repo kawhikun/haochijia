@@ -1,13 +1,13 @@
 {
-  "name": "好吃家 v32 核心强化版",
+  "name": "好吃家 v33 巴黎配色强化版",
   "short_name": "好吃家",
   "description": "首页 3D 人体舞台、6 条营养环、身体记录、中文/国际食品库、拍照分析、本地全量导入导出与 GitHub 同步入口。",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0f1524",
-  "theme_color": "#6c4d7e",
+  "background_color": "#faf2cb",
+  "theme_color": "#faf2cb",
   "icons": [
     {
       "src": "./assets/icon-192.png",

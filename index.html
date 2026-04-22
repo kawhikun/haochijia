@@ -3,15 +3,15 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="description" content="好吃家 v32：首页 3D 人体舞台、6 条营养环、身体数据记录、国际/中文双食品库、拍照分析、本地三重保存与 GitHub 同步。">
-    <meta name="theme-color" content="#6c4d7e">
+    <meta name="description" content="好吃家 v33：首页 3D 人体舞台、6 条营养环、身体记录、营养建议、中文/国际双食品库、拍照分析、本地全量导入导出与 GitHub 同步入口。">
+    <meta name="theme-color" content="#faf2cb">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>好吃家 v32</title>
+    <title>好吃家 v33</title>
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="apple-touch-icon" href="./assets/icon-192.png">
-    <link rel="stylesheet" href="./assets/styles.css">
+    <link rel="stylesheet" href="./assets/styles.css?v=20260422a">
   </head>
   <body>
     <div class="app-shell" id="appShell">
@@ -36,8 +36,8 @@
           <div class="stage-photo-ref" id="stagePhotoRef"></div>
           <canvas id="bodyCanvas" class="body-canvas" width="900" height="1100"></canvas>
           <div class="hero-label">
-            <span class="mode-pill" id="focusModePill">基础模式 · 6 环联动</span>
-            <strong id="focusModeText">6 条主营养环围绕模型联动更新</strong>
+            <span class="mode-pill" id="focusModePill">首页 3D 人体 + 6 环</span>
+            <strong id="focusModeText">拖旋 / 缩放 / 双击回正 / 长按进入身体记录</strong>
           </div>
           <div class="ring-orbit" id="ringOrbit"></div>
         </section>
@@ -331,7 +331,7 @@
               <span class="subtle-note" id="persistStatus">本地已保存</span>
             </div>
             <div class="backup-meta" id="localBackupMeta">最近本地备份：0 份</div>
-            <div class="dialog-note">完整导出会带上身体记录、饮食记录、自定义食品、照片塑形参数与 GitHub 同步配置（不含 token）。</div>
+            <div class="dialog-note">完整导出包含身体、饮食、自定义食品、塑形参数与同步配置（不含 token）。</div>
             <div class="action-row split-row">
               <button type="button" class="ghost-btn" id="importAllBtn">导入全部</button>
               <button type="button" class="primary-btn" id="exportAllBtn">导出全部</button>
@@ -353,7 +353,7 @@
               <h4>GitHub 云端</h4>
               <span class="subtle-note" id="githubStatus">未配置</span>
             </div>
-            <div class="dialog-note">默认已预填 <strong>kawhikun / haochijia</strong>，建议先把本地层用满，再按需开启自动同步。</div>
+            <div class="dialog-note">默认已预填 <strong>kawhikun / haochijia</strong>，先本地保存，再按需开启同步。</div>
             <div class="form-grid dialog-grid">
               <label class="field"><span>Owner</span><input id="ghOwner" type="text" autocomplete="off" placeholder="你的 GitHub 用户名"></label>
               <label class="field"><span>Repo</span><input id="ghRepo" type="text" autocomplete="off" placeholder="仓库名"></label>
@@ -373,6 +373,6 @@
 
     <input id="importInput" type="file" accept=".json,.csv" hidden>
 
-    <script type="module" src="./assets/core.js"></script>
+    <script type="module" src="./assets/core.js?v=20260422a"></script>
   </body>
 </html>
