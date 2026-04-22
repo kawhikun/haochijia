@@ -568,6 +568,9 @@ function buildWebglBodyGroup(THREE, recordInput, previousInput, ghost = false) {
 
 function createWebGLBodyScene(canvas, THREE, OrbitControls, options) {
   const perf = perfProfile();
+  const platformKey = options?.platformKey || '';
+  const isIOS = platformKey === 'ios';
+  const isAndroid = platformKey === 'android';
   let renderer;
   try {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: !perf.reduced, alpha: true, powerPreference: 'high-performance' });
@@ -583,9 +586,9 @@ function createWebGLBodyScene(canvas, THREE, OrbitControls, options) {
   renderer.setClearAlpha(0);
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0x101626, 5.1, 11.8);
+  scene.fog = new THREE.Fog(isIOS ? 0x151a2f : isAndroid ? 0x132132 : 0x101626, 5.1, isAndroid ? 12.6 : 11.8);
 
-  const camera = new THREE.PerspectiveCamera(25.5, 1, 0.1, 30);
+  const camera = new THREE.PerspectiveCamera(isIOS ? 24.8 : isAndroid ? 25.2 : 25.5, 1, 0.1, 30);
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
   controls.enablePan = false;
@@ -595,18 +598,18 @@ function createWebGLBodyScene(canvas, THREE, OrbitControls, options) {
   controls.minPolarAngle = 0.92;
   controls.maxPolarAngle = 2.12;
   controls.target.set(0, 0.16, 0);
-  controls.zoomSpeed = 0.96;
-  controls.rotateSpeed = 0.82;
+  controls.zoomSpeed = isIOS ? 1.05 : isAndroid ? 0.98 : 0.96;
+  controls.rotateSpeed = isIOS ? 0.96 : isAndroid ? 0.9 : 0.82;
   controls.autoRotate = !perf.reduced;
-  controls.autoRotateSpeed = 0.48;
+  controls.autoRotateSpeed = isIOS ? 0.44 : isAndroid ? 0.54 : 0.48;
 
   const white = new THREE.Color(0xffffff);
   const deepSlate = new THREE.Color(0x101626);
 
-  const hemi = new THREE.HemisphereLight(0xf7f1ec, 0x182436, perf.reduced ? 1.34 : 1.54);
+  const hemi = new THREE.HemisphereLight(isIOS ? 0xf4e6f1 : isAndroid ? 0xeaf7f0 : 0xf7f1ec, isIOS ? 0x1a2440 : 0x182436, perf.reduced ? 1.34 : (isIOS ? 1.62 : isAndroid ? 1.58 : 1.54));
   scene.add(hemi);
-  const key = new THREE.DirectionalLight(0xfffbf6, perf.reduced ? 1.78 : 2.12);
-  key.position.set(3.9, 5.1, 3.9);
+  const key = new THREE.DirectionalLight(isIOS ? 0xfff5fe : isAndroid ? 0xf6fff8 : 0xfffbf6, perf.reduced ? 1.78 : (isIOS ? 2.18 : isAndroid ? 2.08 : 2.12));
+  key.position.set(isAndroid ? 4.2 : 3.9, 5.1, isIOS ? 4.1 : 3.9);
   key.castShadow = perf.shadows;
   key.shadow.mapSize.width = perf.shadows ? 512 : 256;
   key.shadow.mapSize.height = perf.shadows ? 512 : 256;
@@ -617,19 +620,19 @@ function createWebGLBodyScene(canvas, THREE, OrbitControls, options) {
   key.shadow.camera.top = 4;
   key.shadow.camera.bottom = -4;
   scene.add(key);
-  const rim = new THREE.DirectionalLight(0xb484b0, perf.reduced ? 0.84 : 1.08);
-  rim.position.set(-4.1, 3.2, -4.3);
+  const rim = new THREE.DirectionalLight(isIOS ? 0xd7a7d6 : isAndroid ? 0xa6d3b1 : 0xb484b0, perf.reduced ? 0.84 : (isIOS ? 1.16 : isAndroid ? 1.04 : 1.08));
+  rim.position.set(isIOS ? -4.3 : -4.1, 3.2, isAndroid ? -4.0 : -4.3);
   scene.add(rim);
-  const fill = new THREE.PointLight(0xdfeeff, perf.reduced ? 0.84 : 1.1, 13, 2);
-  fill.position.set(0, 1.6, 2.55);
+  const fill = new THREE.PointLight(isIOS ? 0xf7eef9 : isAndroid ? 0xe8fff2 : 0xdfeeff, perf.reduced ? 0.84 : (isIOS ? 1.16 : isAndroid ? 1.02 : 1.1), 13, 2);
+  fill.position.set(0, isIOS ? 1.7 : 1.6, isAndroid ? 2.7 : 2.55);
   scene.add(fill);
-  const accentLight = new THREE.PointLight(0x6c8fa9, perf.reduced ? 0.58 : 0.78, 8.5, 2);
-  accentLight.position.set(0, 0.5, -2.2);
+  const accentLight = new THREE.PointLight(isIOS ? 0x795f9c : isAndroid ? 0x518463 : 0x6c8fa9, perf.reduced ? 0.58 : (isIOS ? 0.82 : isAndroid ? 0.76 : 0.78), 8.8, 2);
+  accentLight.position.set(0, 0.5, isIOS ? -2.35 : -2.2);
   scene.add(accentLight);
 
   const floor = new THREE.Mesh(
-    new THREE.CircleGeometry(2.26, perf.reduced ? 44 : 72),
-    new THREE.ShadowMaterial({ transparent: true, opacity: perf.reduced ? 0.17 : 0.24, color: 0x6c8fa9 })
+    new THREE.CircleGeometry(isAndroid ? 2.34 : 2.26, perf.reduced ? 44 : 72),
+    new THREE.ShadowMaterial({ transparent: true, opacity: perf.reduced ? 0.17 : (isIOS ? 0.26 : 0.24), color: isIOS ? 0x795f9c : isAndroid ? 0x518463 : 0x6c8fa9 })
   );
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = -1.2;
@@ -637,8 +640,8 @@ function createWebGLBodyScene(canvas, THREE, OrbitControls, options) {
   scene.add(floor);
 
   const glowRing = new THREE.Mesh(
-    new THREE.RingGeometry(1.1, 1.92, perf.reduced ? 40 : 72),
-    new THREE.MeshBasicMaterial({ color: 0x6c8fa9, transparent: true, opacity: perf.reduced ? 0.09 : 0.16, side: THREE.DoubleSide })
+    new THREE.RingGeometry(isIOS ? 1.08 : 1.1, isAndroid ? 1.98 : 1.92, perf.reduced ? 40 : 72),
+    new THREE.MeshBasicMaterial({ color: isIOS ? 0x795f9c : isAndroid ? 0x518463 : 0x6c8fa9, transparent: true, opacity: perf.reduced ? 0.09 : 0.16, side: THREE.DoubleSide })
   );
   glowRing.rotation.x = -Math.PI / 2;
   glowRing.position.y = -1.17;
@@ -646,8 +649,8 @@ function createWebGLBodyScene(canvas, THREE, OrbitControls, options) {
   scene.add(glowRing);
 
   const glowRingOuter = new THREE.Mesh(
-    new THREE.RingGeometry(1.96, 2.34, perf.reduced ? 40 : 72),
-    new THREE.MeshBasicMaterial({ color: 0xb484b0, transparent: true, opacity: perf.reduced ? 0.04 : 0.07, side: THREE.DoubleSide })
+    new THREE.RingGeometry(1.96, isAndroid ? 2.42 : 2.34, perf.reduced ? 40 : 72),
+    new THREE.MeshBasicMaterial({ color: isIOS ? 0xb484b0 : isAndroid ? 0xa6d3b1 : 0xb484b0, transparent: true, opacity: perf.reduced ? 0.04 : (isIOS ? 0.08 : 0.07), side: THREE.DoubleSide })
   );
   glowRingOuter.rotation.x = -Math.PI / 2;
   glowRingOuter.position.y = -1.168;
@@ -655,8 +658,8 @@ function createWebGLBodyScene(canvas, THREE, OrbitControls, options) {
   scene.add(glowRingOuter);
 
   const arcRing = new THREE.Mesh(
-    new THREE.TorusGeometry(1.38, 0.012, 10, perf.reduced ? 36 : 96, Math.PI * 1.68),
-    new THREE.MeshBasicMaterial({ color: 0xeedaca, transparent: true, opacity: perf.reduced ? 0.05 : 0.12 })
+    new THREE.TorusGeometry(isIOS ? 1.34 : 1.38, 0.012, 10, perf.reduced ? 36 : 96, Math.PI * (isAndroid ? 1.74 : 1.68)),
+    new THREE.MeshBasicMaterial({ color: isIOS ? 0xeedaca : isAndroid ? 0xccf2e0 : 0xeedaca, transparent: true, opacity: perf.reduced ? 0.05 : 0.12 })
   );
   arcRing.rotation.set(Math.PI / 2.8, 0.08, Math.PI / 10);
   arcRing.position.set(0, 0.2, -0.1);
@@ -664,8 +667,8 @@ function createWebGLBodyScene(canvas, THREE, OrbitControls, options) {
   scene.add(arcRing);
 
   const backAura = new THREE.Mesh(
-    new THREE.SphereGeometry(1.4, perf.reduced ? 18 : 34, perf.reduced ? 14 : 26),
-    new THREE.MeshBasicMaterial({ color: 0xdfeeff, transparent: true, opacity: perf.reduced ? 0.04 : 0.08, side: THREE.DoubleSide })
+    new THREE.SphereGeometry(isAndroid ? 1.46 : 1.4, perf.reduced ? 18 : 34, perf.reduced ? 14 : 26),
+    new THREE.MeshBasicMaterial({ color: isIOS ? 0xf5e9f5 : isAndroid ? 0xe2fff1 : 0xdfeeff, transparent: true, opacity: perf.reduced ? 0.04 : (isIOS ? 0.09 : 0.08), side: THREE.DoubleSide })
   );
   backAura.scale.set(1.1, 1.48, 0.5);
   backAura.position.set(0, 0.58, -0.68);
@@ -716,10 +719,12 @@ function createWebGLBodyScene(canvas, THREE, OrbitControls, options) {
   }
 
   function alignCamera(angle = 0) {
-    const radius = perf.reduced ? 4.02 : 4.2;
+    const radius = perf.reduced ? (isIOS ? 3.94 : 4.02) : (isIOS ? 4.06 : isAndroid ? 4.26 : 4.2);
+    const cameraY = isIOS ? 1.4 : isAndroid ? 1.3 : 1.34;
+    const targetY = isIOS ? 0.2 : isAndroid ? 0.14 : 0.16;
     const rad = (angle || 0) * Math.PI / 180;
-    camera.position.set(Math.sin(rad) * radius, 1.34, Math.cos(rad) * radius);
-    controls.target.set(0, 0.16, 0);
+    camera.position.set(Math.sin(rad) * radius, cameraY, Math.cos(rad) * radius);
+    controls.target.set(0, targetY, 0);
     controls.update();
   }
 
