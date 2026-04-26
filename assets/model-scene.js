@@ -1,4 +1,24 @@
 let remoteModulesPromise = null;
+const STANDARD_BODY_ASSET_URL = './assets/body-models/standard-bodies.json?v=20260426g';
+let standardBodyAssetPromise = null;
+
+function loadStandardBodyAsset() {
+  if (!standardBodyAssetPromise) {
+    standardBodyAssetPromise = fetch(STANDARD_BODY_ASSET_URL, { cache: 'force-cache' })
+      .then((response) => {
+        if (!response.ok) throw new Error(`standard body asset ${response.status}`);
+        return response.json();
+      })
+      .then((asset) => {
+        if (!asset?.meshes || (!asset.meshes.femaleStandard && !asset.meshes.maleStandard)) {
+          throw new Error('standard body mesh missing');
+        }
+        return asset;
+      });
+  }
+  return standardBodyAssetPromise;
+}
+
 
 function importWithTimeout(url, ms = 5200) {
   let timer = null;
@@ -585,6 +605,202 @@ function addAnatomicalGuideRings(THREE, group, dims, ghost = false) {
   group.add(centerLine);
 }
 
+
+function pickStandardBodyMesh(asset, recordInput) {
+  const record = recordInput || {};
+  const sex = String(record.sex || record.gender || '').toLowerCase();
+  const meshes = asset?.meshes || {};
+  if (sex === 'male') return meshes.maleStandard || meshes.femaleStandard || Object.values(meshes)[0] || null;
+  return meshes.femaleStandard || meshes.maleStandard || Object.values(meshes)[0] || null;
+}
+
+function decodeStandardMesh(mesh) {
+  if (!mesh || !Array.isArray(mesh.positions) || !Array.isArray(mesh.indices)) return null;
+  if (!mesh.__decoded) {
+    const quant = Number(mesh.quant || 10000) || 10000;
+    const base = new Float32Array(mesh.positions.length);
+    for (let i = 0; i < mesh.positions.length; i += 1) base[i] = Number(mesh.positions[i] || 0) / quant;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (let i = 1; i < base.length; i += 3) {
+      minY = Math.min(minY, base[i]);
+      maxY = Math.max(maxY, base[i]);
+    }
+    const indexArray = (mesh.vertexCount || base.length / 3) > 65535
+      ? new Uint32Array(mesh.indices)
+      : new Uint16Array(mesh.indices);
+    mesh.__decoded = {
+      base,
+      indices: indexArray,
+      minY: Number.isFinite(minY) ? minY : -1.09,
+      maxY: Number.isFinite(maxY) ? maxY : 1.09,
+    };
+  }
+  return mesh.__decoded;
+}
+
+function bellWeight(t, center, spread) {
+  const distance = (Number(t) - center) / Math.max(0.0001, spread);
+  return Math.exp(-distance * distance);
+}
+
+function bodyRatio(base, neutral, key, min = 0.78, max = 1.25) {
+  const source = Number(base?.[key]);
+  const ref = Number(neutral?.[key]);
+  if (!Number.isFinite(source) || source <= 0 || !Number.isFinite(ref) || ref <= 0) return 1;
+  return clampNum(source / ref, min, max);
+}
+
+function buildStandardBodyMorph(recordInput) {
+  const base = withBodyDefaults(recordInput);
+  const neutral = withBodyDefaults({
+    sex: base?.sex || recordInput?.sex || 'female',
+    heightCm: base?.heightCm || 165,
+    weightKg: base?.weightKg || 58,
+    bodyFat: base?.bodyFat || 22,
+  });
+  const armRatio = bodyRatio(
+    { upperArm: averageOf(base.upperArmL, base.upperArmR) || base.upperArm || neutral.upperArmL },
+    { upperArm: averageOf(neutral.upperArmL, neutral.upperArmR) || 28 },
+    'upperArm',
+    0.78,
+    1.28
+  );
+  const thighRatio = bodyRatio(
+    { thigh: averageOf(base.thighL, base.thighR) || base.thigh || neutral.thighL },
+    { thigh: averageOf(neutral.thighL, neutral.thighR) || 54 },
+    'thigh',
+    0.78,
+    1.28
+  );
+  const calfRatio = bodyRatio(
+    { calf: averageOf(base.calfL, base.calfR) || base.calf || neutral.calfL },
+    { calf: averageOf(neutral.calfL, neutral.calfR) || 36 },
+    'calf',
+    0.78,
+    1.24
+  );
+  const bodyFatPush = clampNum(((base.bodyFat || 22) - 22) / 100, -0.1, 0.16);
+  return {
+    height: clampNum((base.heightCm || 165) / 165, 0.9, 1.16),
+    shoulder: bodyRatio(base, neutral, 'shoulder', 0.86, 1.2) * bodySoftMix(1, base.shapeShoulder || 1, 0.76),
+    chest: bodyRatio(base, neutral, 'chest', 0.82, 1.28) * bodySoftMix(1, base.shapeChest || 1, 0.84),
+    waist: bodyRatio(base, neutral, 'waist', 0.72, 1.24) * bodySoftMix(1, base.shapeWaist || 1, 0.9),
+    abdomen: bodyRatio(base, neutral, 'abdomen', 0.72, 1.26) * bodySoftMix(1, base.shapeWaist || 1, 0.78),
+    hip: bodyRatio(base, neutral, 'hip', 0.8, 1.28) * bodySoftMix(1, base.shapeHip || 1, 0.86),
+    neck: bodyRatio(base, neutral, 'neck', 0.86, 1.18),
+    arm: armRatio * bodySoftMix(1, base.shapeArm || 1, 0.88),
+    thigh: thighRatio * bodySoftMix(1, base.shapeHip || 1, 0.18) * bodySoftMix(1, base.shapeLeg || 1, 0.42),
+    calf: calfRatio * bodySoftMix(1, base.shapeLeg || 1, 0.28),
+    leg: bodySoftMix(1, base.shapeLeg || 1, 0.58),
+    depth: clampNum(1 + bodyFatPush, 0.9, 1.18),
+  };
+}
+
+function deformStandardBodyPositions(decoded, recordInput) {
+  const morph = buildStandardBodyMorph(recordInput);
+  const base = decoded.base;
+  const out = new Float32Array(base.length);
+  const minY = decoded.minY;
+  const height = Math.max(0.001, decoded.maxY - decoded.minY);
+  for (let i = 0; i < base.length; i += 3) {
+    const x = base[i];
+    const y = base[i + 1];
+    const z = base[i + 2];
+    const t = clampNum((y - minY) / height, 0, 1);
+    const absX = Math.abs(x);
+    const armZone = absX > 0.27 && t > 0.32 && t < 0.76 ? clampNum((absX - 0.24) / 0.36, 0, 1) : 0;
+    let sx = 1;
+    let sz = 1;
+    const add = (scale, weight, zWeight = 0.72) => {
+      const delta = (scale || 1) - 1;
+      sx += delta * weight;
+      sz += delta * weight * zWeight;
+    };
+    add(morph.calf, bellWeight(t, 0.1, 0.075), 0.78);
+    add(morph.thigh, bellWeight(t, 0.25, 0.095), 0.76);
+    add(morph.hip, bellWeight(t, 0.39, 0.085), 0.86);
+    add(morph.abdomen, bellWeight(t, 0.47, 0.07), 0.9);
+    add(morph.waist, bellWeight(t, 0.53, 0.07), 0.82);
+    add(morph.chest, bellWeight(t, 0.64, 0.09), 0.8);
+    add(morph.shoulder, bellWeight(t, 0.73, 0.07), 0.62);
+    add(morph.neck, bellWeight(t, 0.81, 0.045), 0.54);
+    if (armZone) {
+      add(morph.arm, armZone * (0.82 + bellWeight(t, 0.56, 0.18) * 0.18), 0.92);
+    }
+    const legBlend = t < 0.36 ? (1 - t / 0.36) : 0;
+    const yLegScale = 1 + (morph.leg - 1) * legBlend;
+    const yScale = morph.height * yLegScale;
+    out[i] = x * clampNum(sx, 0.66, 1.46);
+    out[i + 1] = y * clampNum(yScale, 0.84, 1.25);
+    out[i + 2] = z * clampNum(sz * morph.depth, 0.7, 1.46);
+  }
+  return out;
+}
+
+function standardBodyVolumeDelta(current, previous) {
+  if (!current || !previous) return 0.06;
+  const keys = ['chest', 'waist', 'abdomen', 'hip', 'upperArmL', 'upperArmR', 'thighL', 'thighR', 'calfL', 'calfR'];
+  const deltas = keys.map((key) => Number(current?.[key] || 0) - Number(previous?.[key] || 0)).filter((value) => Number.isFinite(value));
+  if (!deltas.length) return 0.06;
+  return round1(deltas.reduce((sum, value) => sum + value, 0) / deltas.length);
+}
+
+function addStandardBodyOriginMark(THREE, group, dims, ghost = false) {
+  if (!dims) return;
+  addAnatomicalGuideRings(THREE, group, dims, ghost);
+  const pointMat = new THREE.MeshBasicMaterial({
+    color: ghost ? 0xb9c8e7 : 0xffffff,
+    transparent: true,
+    opacity: ghost ? 0.08 : 0.22,
+    depthWrite: false,
+  });
+  const focusPairs = [
+    ['胸围', dims.focusY?.chest, dims.haloRadiusMap?.chest],
+    ['腰围', dims.focusY?.waist, dims.haloRadiusMap?.waist],
+    ['臀围', dims.focusY?.hip, dims.haloRadiusMap?.hip],
+  ];
+  focusPairs.forEach(([, y, radius], index) => {
+    if (!Number.isFinite(y) || !Number.isFinite(radius)) return;
+    const bead = new THREE.Mesh(new THREE.SphereGeometry(Math.max(0.012, radius * 0.032), 12, 10), pointMat.clone());
+    bead.position.set(radius * 0.54, y, 0.05 + index * 0.004);
+    bead.renderOrder = 6;
+    group.add(bead);
+  });
+}
+
+function buildStandardBodyGroup(THREE, recordInput, previousInput, ghost = false, asset = null) {
+  const record = withBodyDefaults(recordInput);
+  const previous = previousInput ? withBodyDefaults(previousInput) : null;
+  const meshSpec = pickStandardBodyMesh(asset, record);
+  const decoded = decodeStandardMesh(meshSpec);
+  if (!decoded) return buildWebglBodyGroup(THREE, recordInput, previousInput, ghost);
+  const positions = deformStandardBodyPositions(decoded, record);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(new THREE.BufferAttribute(decoded.indices, 1));
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  const delta = standardBodyVolumeDelta(record, previous);
+  const bodyMat = createBodyMaterial(THREE, ghost, delta);
+  bodyMat.material.roughness = ghost ? 0.82 : 0.44;
+  bodyMat.material.metalness = 0.01;
+  bodyMat.material.clearcoat = ghost ? 0.08 : 0.28;
+  bodyMat.material.opacity = ghost ? 0.16 : 0.96;
+  bodyMat.material.transparent = true;
+  const mesh = new THREE.Mesh(geometry, bodyMat.material);
+  mesh.castShadow = !ghost;
+  mesh.receiveShadow = !ghost;
+  mesh.name = meshSpec?.label || 'standard-body';
+  const group = new THREE.Group();
+  group.userData = { heatMaterials: [], dims: buildBodyMeshDims(record), modelSource: meshSpec?.sourceGroup || 'standard-body' };
+  group.add(mesh);
+  collectHeatMat(group, bodyMat);
+  addStandardBodyOriginMark(THREE, group, group.userData.dims, ghost);
+  return group;
+}
+
+
 function buildWebglBodyGroup(THREE, recordInput, previousInput, ghost = false) {
   const record = withBodyDefaults(recordInput);
   const previous = previousInput ? withBodyDefaults(previousInput) : null;
@@ -793,6 +1009,7 @@ function createWebGLBodyScene(canvas, THREE, OrbitControls, options) {
   let disposed = false;
   let currentSnapshot = null;
   let focusField = '';
+  let standardBodyAsset = null;
   let resizeObserver = null;
   let focusHaloBaseScale = 1;
   let userInteracted = false;
@@ -856,10 +1073,15 @@ function createWebGLBodyScene(canvas, THREE, OrbitControls, options) {
       ghostGroup = null;
     }
     if (!snapshot?.current) return;
-    currentGroup = buildWebglBodyGroup(THREE, snapshot.current, snapshot.previous, false);
+    const useStandardBody = standardBodyAsset?.meshes;
+    currentGroup = useStandardBody
+      ? buildStandardBodyGroup(THREE, snapshot.current, snapshot.previous, false, standardBodyAsset)
+      : buildWebglBodyGroup(THREE, snapshot.current, snapshot.previous, false);
     scene.add(currentGroup);
     if (snapshot.previous && options.overlay !== false) {
-      ghostGroup = buildWebglBodyGroup(THREE, snapshot.previous, null, true);
+      ghostGroup = useStandardBody
+        ? buildStandardBodyGroup(THREE, snapshot.previous, null, true, standardBodyAsset)
+        : buildWebglBodyGroup(THREE, snapshot.previous, null, true);
       scene.add(ghostGroup);
     }
     updateFocus(snapshot);
@@ -901,6 +1123,15 @@ function createWebGLBodyScene(canvas, THREE, OrbitControls, options) {
   }
   applyAccent(options.accentColor || '#6c8fa9');
   alignCamera(0);
+  loadStandardBodyAsset()
+    .then((asset) => {
+      standardBodyAsset = asset;
+      options.onModelAssetReady?.(asset);
+      if (!disposed && currentSnapshot) setGroup(currentSnapshot);
+    })
+    .catch((error) => {
+      console.warn('[haochijia] uploaded standard body asset unavailable, procedural mesh retained.', error);
+    });
   requestAnimationFrame(animate);
 
   const markInteracted = () => {

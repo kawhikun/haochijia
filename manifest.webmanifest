@@ -1,7 +1,7 @@
 {
-  "name": "Haochijia v38 Human Panel Strengthened",
+  "name": "Haochijia v39 Standard Body Model",
   "short_name": "Haochijia",
-  "description": "V38 strengthened build with a mature live-linked 3D body panel, fully Chinese-first food labels, improved nutrition advice, daily intake records, and stronger photo analysis.",
+  "description": "V39 build focused on an uploaded standard 3D body model, live body-dimension morphing, collapsible profile panels, natural-day records, historical intake reference, and full data export.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

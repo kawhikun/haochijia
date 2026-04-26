@@ -2817,3 +2817,57 @@ textarea {
     transform: translate(-50%, -50%) scale(var(--ring-scale, 1)) !important;
   }
 }
+
+/* v39 standard body model: collapsible data panels and model-first body workflow */
+.collapsible-card {
+  transition: padding 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.collapsible-body {
+  display: block;
+  overflow: clip;
+}
+
+.collapsible-card.is-collapsed .collapsible-body {
+  display: none;
+}
+
+.collapsible-card.is-collapsed {
+  padding-bottom: 12px;
+}
+
+.collapse-btn {
+  min-width: 54px;
+}
+
+.collapse-btn[aria-expanded="false"] {
+  opacity: 0.9;
+}
+
+#profileCard.is-collapsed .section-head,
+#measureCard.is-collapsed .section-head {
+  margin-bottom: 0;
+}
+
+#profileCard .head-actions,
+#measureCard .head-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.hero-telemetry .telemetry-chip b {
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  #profileCard .head-actions,
+  #measureCard .head-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  #profileCard .section-head,
+  #measureCard .section-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

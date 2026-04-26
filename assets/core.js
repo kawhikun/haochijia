@@ -12,17 +12,17 @@ import {
   clamp,
   NUTRIENT_DEFS,
   OCR_FIELD_MAP,
-} from './nutrition-refs.js?v=20260426f';
-import { buildSmartFoodLabels } from './food-label-upgrade.js?v=20260426f';
-import { createBodyModelController } from './model-scene.js?v=20260426f';
+} from './nutrition-refs.js?v=20260426g';
+import { buildSmartFoodLabels } from './food-label-upgrade.js?v=20260426g';
+import { createBodyModelController } from './model-scene.js?v=20260426g';
 
-const STORAGE_KEY = 'haochijia.core.v38.snapshot';
-const DB_NAME = 'haochijia-core-v38';
+const STORAGE_KEY = 'haochijia.core.v39.snapshot';
+const DB_NAME = 'haochijia-core-v39';
 const DB_STORE = 'kv';
 const IDB_SNAPSHOT_KEY = 'snapshot';
 const IDB_PHOTO_KEY = 'photoRef';
-const MAX_BODY_HISTORY = 60;
-const MAX_LOG_ITEMS_PER_DAY = 300;
+const MAX_BODY_HISTORY = Number.MAX_SAFE_INTEGER;
+const MAX_LOG_ITEMS_PER_DAY = Number.MAX_SAFE_INTEGER;
 const FOOD_SEARCH_LIMIT = 20;
 const RING_FIELD_MAP = {
   protein: 'chest',
@@ -150,7 +150,7 @@ const DEFAULT_GITHUB = {
 
 const DOM = {};
 const state = {
-  version: 'v38',
+  version: 'v39',
   platform: detectPlatform(),
   profile: { ...defaultProfile(), bodyFat: 22, focusNote: '' },
   bodyHistory: [],
@@ -185,16 +185,16 @@ const state = {
   githubSyncTimer: null,
 };
 
-const V32_BUILD_VERSION = 'v38-human-panel-translation-intake-photo';
-const V32_STORAGE_KEYS = [STORAGE_KEY, 'haochijia.core.v37.snapshot', 'haochijia.core.v36.snapshot', 'haochijia.core.v34.snapshot', 'haochijia.core.v33.snapshot', 'haochijia.core.v32.snapshot', 'haochijia.core.v31.snapshot'];
-const V32_IDB_SNAPSHOT_KEYS = ['snapshot-v38', 'snapshot-v37', 'snapshot-v36', 'snapshot-v34', 'snapshot-v33', 'snapshot-v32', 'snapshot'];
-const V32_IDB_BACKUP_KEY = 'snapshot-history-v38';
+const V32_BUILD_VERSION = 'v39-standard-body-daily-history';
+const V32_STORAGE_KEYS = [STORAGE_KEY, 'haochijia.core.v38.snapshot', 'haochijia.core.v37.snapshot', 'haochijia.core.v36.snapshot', 'haochijia.core.v34.snapshot', 'haochijia.core.v33.snapshot', 'haochijia.core.v32.snapshot', 'haochijia.core.v31.snapshot'];
+const V32_IDB_SNAPSHOT_KEYS = ['snapshot-v39', 'snapshot-v38', 'snapshot-v37', 'snapshot-v36', 'snapshot-v34', 'snapshot-v33', 'snapshot-v32', 'snapshot'];
+const V32_IDB_BACKUP_KEY = 'snapshot-history-v39';
 const LOCAL_BACKUP_LIMIT = 18;
 const FOOD_REGION_OPTIONS = new Set(['all', 'cn', 'intl']);
 const FOOD_NAME_MODE_OPTIONS = new Set(['zh', 'en', 'original']);
 const V32_FOOD_BANK_FILES = Object.freeze({
-  cn: ['./data/foods-cn.min.json?v=20260426f'],
-  intl: ['./data/foods-global.part01.min.json?v=20260426f', './data/foods-global.part02.min.json?v=20260426f'],
+  cn: ['./data/foods-cn.min.json?v=20260426g'],
+  intl: ['./data/foods-global.part01.min.json?v=20260426g', './data/foods-global.part02.min.json?v=20260426g'],
 });
 const FOOD_LIBRARY_AUDIT = Object.freeze({
   cn: { label: '中文库', file: 'foods-cn.min.json', rows: 36793, missingZh: 0, missingEn: 0, missingOriginal: 0, missingCode: 0 },
@@ -286,6 +286,10 @@ async function init() {
         DOM.focusModeText.textContent = `${nutrientDisplayName(state.activeRing)} 高亮 · 视角已回正`;
         window.setTimeout(() => renderHeroMeta(), 900);
       },
+      onModelAssetReady: () => {
+        if (DOM.bodyStatusHint) DOM.bodyStatusHint.textContent = '已接入上传的标准人体模型；胸腰臀、四肢和体型输入会实时塑形';
+        if (DOM.focusModePill) DOM.focusModePill.textContent = '标准人体模型 · 6 环联动';
+      },
     });
     state.model.ready
       .then(() => {
@@ -319,6 +323,7 @@ async function init() {
 function bindDom() {
   const ids = [
     'appShell', 'platformBadge', 'menuBtn', 'heroStage', 'bodyCanvas', 'stagePhotoRef', 'heroTelemetry', 'focusModePill', 'focusModeText', 'ringOrbit',
+    'profileCard', 'profileCardBody', 'toggleProfileCardBtn', 'measureCard', 'measureCardBody', 'toggleBodyCardBtn',
     'profileForm', 'bodyForm', 'bodyStatusHint', 'importBodyBtn', 'quickExportBtn', 'saveBodyBtn', 'photoShapeBtn', 'suggestionSummary', 'suggestionCards', 'featureAuditList',
     'bodyHistoryList', 'bodyHistoryMeta', 'foodSearchStatus', 'foodAuditStrip', 'foodSearchInput', 'foodAmountInput', 'foodSearchResults', 'customFoodForm', 'customFoodName', 'customFoodNameEn', 'customFoodCode', 'customFoodBrand', 'customFoodServing', 'saveCustomFoodBtn', 'clearCustomFoodFormBtn', 'customFoodList', 'captureInput',
     'runBarcodeBtn', 'runOcrBtn', 'runSmartCaptureBtn', 'capturePreview', 'captureStatus', 'captureResult', 'captureFoodName', 'captureBasis', 'captureServingSize',
@@ -351,6 +356,8 @@ function bindEvents() {
   });
   DOM.quickExportBtn?.addEventListener('click', exportAllData);
   DOM.importInput.addEventListener('change', onImportSelected);
+  DOM.toggleProfileCardBtn?.addEventListener('click', () => toggleCollapseCard('profile'));
+  DOM.toggleBodyCardBtn?.addEventListener('click', () => toggleCollapseCard('body'));
 
   DOM.profileForm.addEventListener('input', onProfileInput);
   DOM.profileForm.addEventListener('change', onProfileInput);
@@ -499,21 +506,38 @@ function normalizeProfileSnapshot(raw = {}) {
   };
 }
 
-function normalizeBodyHistory(list) {
-  return Array.isArray(list)
-    ? list.map(normalizeBodyRecord).filter(Boolean).sort((a, b) => String(b.recordedAt).localeCompare(String(a.recordedAt))).slice(0, MAX_BODY_HISTORY)
+function normalizeBodyHistory(history) {
+  const seen = new Set();
+  const records = Array.isArray(history)
+    ? history.map(normalizeBodyRecord).filter(Boolean)
     : [];
+  const deduped = [];
+  records
+    .sort((a, b) => String(b.recordDate || b.recordedAt).localeCompare(String(a.recordDate || a.recordedAt)))
+    .forEach((record) => {
+      const key = record.recordDate || dateKeyFromTimestamp(record.recordedAt) || String(record.recordedAt || '');
+      if (seen.has(key)) return;
+      seen.add(key);
+      deduped.push(record);
+    });
+  return deduped;
 }
 
 function normalizeBodyRecord(raw) {
   if (!raw || typeof raw !== 'object') return null;
+  const recordDate = normalizeDateKey(raw.recordDate || raw.date || dateKeyFromTimestamp(raw.recordedAt), todayString());
+  const boundary = dayBoundaryFor(recordDate);
   const upperArm = Number.isFinite(Number(raw.upperArm)) ? Number(raw.upperArm) : averageOrNull(raw.upperArmL, raw.upperArmR);
   const forearm = Number.isFinite(Number(raw.forearm)) ? Number(raw.forearm) : averageOrNull(raw.forearmL, raw.forearmR);
   const thigh = Number.isFinite(Number(raw.thigh)) ? Number(raw.thigh) : averageOrNull(raw.thighL, raw.thighR);
   const calf = Number.isFinite(Number(raw.calf)) ? Number(raw.calf) : averageOrNull(raw.calfL, raw.calfR);
   const ankle = Number.isFinite(Number(raw.ankle)) ? Number(raw.ankle) : averageOrNull(raw.ankleL, raw.ankleR);
   return {
-    recordedAt: raw.recordedAt || new Date().toISOString(),
+    recordDate: boundary.recordDate,
+    dayStart: raw.dayStart || boundary.dayStart,
+    dayEnd: raw.dayEnd || boundary.dayEnd,
+    recordedAt: raw.recordedAt || timestampForRecordDate(boundary.recordDate),
+    updatedAt: raw.updatedAt || raw.recordedAt || timestampForRecordDate(boundary.recordDate),
     heightCm: finiteOrNull(raw.heightCm),
     weightKg: finiteOrNull(raw.weightKg),
     bodyFat: finiteOrNull(raw.bodyFat),
@@ -535,18 +559,32 @@ function normalizeBodyRecord(raw) {
 function normalizeLogs(logs) {
   const out = {};
   Object.entries(logs || {}).forEach(([date, entry]) => {
-    const items = Array.isArray(entry?.items) ? entry.items.map(normalizeLogItem).filter(Boolean).slice(0, MAX_LOG_ITEMS_PER_DAY) : [];
-    if (items.length) out[date] = { items };
+    const key = normalizeDateKey(entry?.recordDate || date, todayString());
+    const boundary = dayBoundaryFor(key);
+    const items = Array.isArray(entry?.items)
+      ? entry.items.map((item) => normalizeLogItem(item, key)).filter(Boolean)
+      : [];
+    if (!items.length) return;
+    if (!out[key]) out[key] = { ...boundary, items: [] };
+    out[key].items.push(...items);
+  });
+  Object.values(out).forEach((entry) => {
+    entry.items.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
   });
   return out;
 }
 
-function normalizeLogItem(raw) {
+function normalizeLogItem(raw, recordDateHint = '') {
   if (!raw || typeof raw !== 'object') return null;
   const labels = normalizeFoodLabels(raw);
+  const key = normalizeDateKey(raw.recordDate || raw.date || recordDateHint || dateKeyFromTimestamp(raw.createdAt), todayString());
+  const boundary = dayBoundaryFor(key);
   return {
     id: raw.id || uid('log'),
-    createdAt: raw.createdAt || new Date().toISOString(),
+    createdAt: raw.createdAt || timestampForRecordDate(boundary.recordDate),
+    recordDate: boundary.recordDate,
+    dayStart: raw.dayStart || boundary.dayStart,
+    dayEnd: raw.dayEnd || boundary.dayEnd,
     label: String(raw.label || raw.name || labels.zh || '未命名食品'),
     labels,
     grams: finiteOrNull(raw.grams),
@@ -556,7 +594,6 @@ function normalizeLogItem(raw) {
     library: String(raw.library || classifyFoodLibrary({ labels })),
   };
 }
-
 
 function normalizeCustomFoods(list) {
   return Array.isArray(list) ? list.map(normalizeCustomFood).filter(Boolean).slice(0, CUSTOM_FOOD_LIMIT) : [];
@@ -773,8 +810,14 @@ function readBodyForm() {
 
 function buildCurrentBodyRecord() {
   const body = readBodyForm();
+  const recordDate = todayString();
+  const boundary = dayBoundaryFor(recordDate);
   return normalizeBodyRecord({
-    recordedAt: new Date().toISOString(),
+    recordDate: boundary.recordDate,
+    dayStart: boundary.dayStart,
+    dayEnd: boundary.dayEnd,
+    recordedAt: timestampForRecordDate(boundary.recordDate),
+    updatedAt: new Date().toISOString(),
     heightCm: state.profile.heightCm,
     weightKg: state.profile.weightKg,
     bodyFat: finiteOrNull(DOM.profileForm.bodyFat.value),
@@ -791,6 +834,7 @@ function buildModelRecord() {
   const shape = getActivePhotoShape();
   return {
     ...record,
+    sex: state.profile.sex,
     upperArmL: record.upperArm,
     upperArmR: record.upperArm,
     forearmL: record.forearm,
@@ -873,12 +917,10 @@ function scheduleSoftRefresh() {
 }
 
 function renderHeroMeta() {
-  const platformText = state.platform.key === 'ios' ? 'iPhone Body Core' : state.platform.key === 'android' ? 'Android Body Core' : 'Body Core';
-  DOM.focusModePill.textContent = `${platformText} · 6 Nutrition Rings`;
-  DOM.focusModeText.textContent = `${nutrientDisplayName(state.activeRing)} 高亮 · 数据实时联动 · 拖旋 / 缩放 / 双击回正`;
+  const platformText = state.platform.key === 'ios' ? 'iPhone 标准模型' : state.platform.key === 'android' ? 'Android 标准模型' : '标准人体模型';
+  DOM.focusModePill.textContent = `${platformText} · 6 环联动`;
+  DOM.focusModeText.textContent = `${nutrientDisplayName(state.activeRing)} 高亮 · 身体维度实时塑形 · 拖旋 / 缩放 / 双击回正`;
 }
-
-
 
 function renderHeroTelemetry() {
   if (!DOM.heroTelemetry || !state.calc?.targets) return;
@@ -985,7 +1027,7 @@ function buildRingData() {
 
 function renderSuggestions() {
   const cards = buildSuggestionCards();
-  DOM.suggestionSummary.textContent = state.focusMode.label + ' · 科学建议 ' + cards.length + ' 条 · 基于今日记录实时更新';
+  DOM.suggestionSummary.textContent = state.focusMode.label + ' · 科学建议 ' + cards.length + ' 条 · 基于今日与历史摄入参考更新';
   const cardsHtml = cards.map((card) =>
     '<article class="suggestion-card ' + escapeHtml(card.priorityClass || '') + '">' +
       '<strong>' + escapeHtml(card.title) + '</strong>' +
@@ -1002,7 +1044,7 @@ function renderSuggestions() {
 function renderAdviceBasisPanel() {
   const notes = Array.isArray(state.calc?.notes) ? state.calc.notes.slice(0, 7) : [];
   const basisRows = Array.isArray(state.calc?.basisRows)
-    ? state.calc.basisRows.filter((row) => ['年龄分组', 'BMI', '生理状态', '生理周期', '关节关注', '糖代谢状态', '当前蛋白建议', '目标热量'].includes(row.label)).slice(0, 8)
+    ? state.calc.basisRows.filter((row) => ['BMI', '生理状态', '生理周期', '关节关注', '糖代谢状态', '当前蛋白建议', '目标热量'].includes(row.label)).slice(0, 8)
     : [];
   if (!notes.length && !basisRows.length) return '';
   return `
@@ -1029,6 +1071,7 @@ function buildSuggestionCards() {
       ? (progress > 1 ? 130 + progress * 24 : Math.max(0, progress - 0.75) * 42)
       : ((1 - Math.min(progress, 1.35)) * 100 + (state.focusMode.nutrientIds.includes(id) ? 16 : 0));
     const hintFoods = NUTRIENT_HINTS[id] || ['优先真实食物', '分次摄入', '连续记录'];
+    const historyReference = historicalIntakeReference(id, target, 7);
     const percent = Math.round(progress * 100);
     const title = nutrientDisplayName(id) + ' ' + percent + '%';
     let subtitle = '目标 ' + formatCompactNutrient(id, goal) + ' · 已摄入 ' + formatCompactNutrient(id, current);
@@ -1065,28 +1108,60 @@ function buildSuggestionCards() {
     if (id === 'fiber') action += ' 纤维增加时同步饮水，避免肠胃不适。';
     if (id === 'water') action += ' 分时段小口补水，不需要集中猛喝。';
     const basis = target.type === 'range'
-      ? '依据：年龄、性别、生理状态、活动量与目标计算；推荐区间 ' + formatCompactNutrient(id, Number(target.min || 0)) + '-' + formatCompactNutrient(id, Number(target.max || goal)) + '，当前按优先目标 ' + formatCompactNutrient(id, goal) + ' 评估。'
+      ? '依据：个人资料、生理状态、活动量与目标计算；推荐区间 ' + formatCompactNutrient(id, Number(target.min || 0)) + '-' + formatCompactNutrient(id, Number(target.max || goal)) + '，当前按优先目标 ' + formatCompactNutrient(id, goal) + ' 评估。'
       : '依据：个人资料与今日已记录摄入；' + (target.type === 'max' ? '按上限控制' : '按推荐目标补足') + '，每次输入都会重算。';
-    return { id, relevance, title, subtitle, action, basis, foods: hintFoods, priorityClass };
+    return { id, relevance, title, subtitle, action, basis: basis + ' ' + historyReference, foods: hintFoods, priorityClass };
   }).sort((a, b) => b.relevance - a.relevance).slice(0, 6);
   return cards;
 }
 
+function historicalIntakeReference(id, target, lookbackDays = 7) {
+  const values = [];
+  for (let i = 1; i <= lookbackDays; i += 1) {
+    const key = offsetDateString(state.activeDate, -i);
+    const entry = state.logs?.[key];
+    if (!entry?.items?.length) continue;
+    const totals = computeTotalsForDate(key, { create: false });
+    values.push(Number(totals[id] || 0));
+  }
+  if (!values.length) return '历史参考：近 7 天暂无有效摄入记录。';
+  const avg = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const met = values.filter((value) => intakeMeetsTarget(value, target)).length;
+  return `历史参考：近 ${values.length} 个有记录日平均 ${formatCompactNutrient(id, avg)}，达标 ${met}/${values.length} 天。`;
+}
+
+function intakeMeetsTarget(value, target) {
+  const number = Number(value || 0);
+  if (!target) return false;
+  if (target.type === 'max') return number <= Number(target.target || 0);
+  if (target.type === 'range') {
+    const min = Number(target.min || 0);
+    const max = Number(target.max || target.preferred || 0);
+    return number >= min && (!max || number <= max);
+  }
+  return number >= Number(target.target || 0);
+}
+
+function formatDateWindow(dateKey) {
+  const key = normalizeDateKey(dateKey, '');
+  return key ? `${key} 0:00-23:59` : '未记录日期';
+}
+
 function renderBodyHistory() {
-  DOM.bodyHistoryMeta.textContent = `${state.bodyHistory.length} 条`;
+  DOM.bodyHistoryMeta.textContent = `${state.bodyHistory.length} 个自然日 · 可全量导出`;
   if (!state.bodyHistory.length) {
     DOM.bodyHistoryList.innerHTML = '<div class="empty-state">先保存第一条身体记录</div>';
     return;
   }
   DOM.bodyHistoryList.innerHTML = state.bodyHistory.slice(0, 10).map((item, index) => `
     <article class="history-item">
-      <strong>${escapeHtml(formatDateTime(item.recordedAt))}</strong>
+      <strong>${escapeHtml(formatDateWindow(item.recordDate || dateKeyFromTimestamp(item.recordedAt)))}</strong>
       <div class="history-meta">${escapeHtml(bodyRecordSummary(item))}</div>
+      <div class="history-meta">更新时间：${escapeHtml(formatDateTime(item.updatedAt || item.recordedAt))}</div>
       <button type="button" class="ghost-btn tiny-btn" data-load-body-index="${index}">载入到模型</button>
     </article>
   `).join('');
 }
-
 
 function renderFoodSearchResults() {
   renderFilterButtons();
@@ -1167,9 +1242,9 @@ function renderFeatureAudit() {
   const items = [
     { ok: true, title: '中文 / 国际双食品库', meta: `${loadedText}；中文界面下优先显示完整中文名，国际库增加自动翻译兜底` },
     { ok: true, title: '用户自定义常用食品', meta: `已支持新增、编辑、删除、搜索优先和一键加入；当前 ${state.customFoods.length} 个` },
-    { ok: true, title: '状态化营养建议', meta: `${state.focusMode.label}：年龄、性别、活动、训练、目标、糖代谢、生理期、骨关节共同参与，并按缺口/超量实时排序` },
+    { ok: true, title: '状态化营养建议', meta: `${state.focusMode.label}：基础资料、活动、训练、目标、糖代谢、生理期、骨关节与历史摄入共同参与，并按缺口/超量实时排序` },
     { ok: true, title: '生理期 / 骨关节建议', meta: '已增加周期、经量、经前不适、日晒、关节部位、关节不适入口' },
-    { ok: true, title: '3D 初始形态与照片塑形', meta: '完整头部、颈肩、四肢、柔光材质、6 维照片塑形联动，并支持滑杆实时预览' },
+    { ok: true, title: '上传标准人体模型与照片塑形', meta: '已接入上传的标准男/女体型网格；胸腰臀、肩和四肢维度实时驱动模型变形，并支持照片滑杆预览' },
     { ok: true, title: '数据安全', meta: 'localStorage + IndexedDB + 最近备份 + 全量导入导出 + GitHub 同步入口' },
   ];
   DOM.featureAuditList.innerHTML = items.map((item) => `
@@ -1340,7 +1415,7 @@ function renderDailyToolbar() {
 function daySummaryForItems(items) {
   const totals = items.reduce((acc, item) => mergeTotals(acc, item.nutrients || {}), createEmptyTotals());
   const yesterday = offsetDateString(state.activeDate, -1);
-  const yesterdayKcal = Number(computeTotalsForDate(yesterday)?.kcal || 0);
+  const yesterdayKcal = Number(computeTotalsForDate(yesterday, { create: false })?.kcal || 0);
   const kcal = Number(totals.kcal || 0);
   const delta = yesterdayKcal ? kcal - yesterdayKcal : 0;
   return { totals, kcal, delta, count: items.length };
@@ -1439,6 +1514,37 @@ function renderGitHubStatus() {
 }
 
 
+function setCardCollapsed(cardName, collapsed) {
+  const isProfile = cardName === 'profile';
+  const card = isProfile ? DOM.profileCard : DOM.measureCard;
+  const btn = isProfile ? DOM.toggleProfileCardBtn : DOM.toggleBodyCardBtn;
+  if (!card || !btn) return;
+  card.classList.toggle('is-collapsed', Boolean(collapsed));
+  btn.setAttribute('aria-expanded', String(!collapsed));
+  btn.textContent = collapsed ? '展开' : '收起';
+}
+
+function toggleCollapseCard(cardName) {
+  const card = cardName === 'profile' ? DOM.profileCard : DOM.measureCard;
+  if (!card) return;
+  setCardCollapsed(cardName, !card.classList.contains('is-collapsed'));
+}
+
+function profileBasicsComplete() {
+  const p = readProfileForm();
+  return Number.isFinite(p.heightCm) && Number.isFinite(p.weightKg) && Boolean(p.sex);
+}
+
+function bodyDimensionsComplete() {
+  const b = readBodyForm();
+  return ['chest', 'waist', 'hip'].every((key) => Number.isFinite(b[key]));
+}
+
+function collapseCompletedCards() {
+  if (profileBasicsComplete()) setCardCollapsed('profile', true);
+  if (bodyDimensionsComplete()) setCardCollapsed('body', true);
+}
+
 function onProfileInput() {
   state.profile = {
     ...readProfileForm(),
@@ -1450,7 +1556,7 @@ function onProfileInput() {
 }
 
 function onBodyInput() {
-  if (DOM.bodyStatusHint) DOM.bodyStatusHint.textContent = '身体维度已实时联动 3D 模型';
+  if (DOM.bodyStatusHint) DOM.bodyStatusHint.textContent = '身体维度已实时联动标准人体模型：胸腰臀、肩、四肢会同步塑形';
   scheduleSoftRefresh();
 }
 
@@ -1583,9 +1689,10 @@ function onFoodResultsClick(event) {
 function addFoodToToday(food, grams) {
   const nutrients = foodNutrientsForAmount(food, grams);
   const labels = normalizeFoodLabels(food);
+  const meta = recordMetaForDate(state.activeDate);
   const item = {
     id: uid('log'),
-    createdAt: new Date().toISOString(),
+    ...meta,
     label: labels.zh || labels.original,
     labels,
     grams: round1(grams),
@@ -1594,13 +1701,11 @@ function addFoodToToday(food, grams) {
     source: food.customPer100 ? 'custom' : 'library',
     library: food.library || classifyFoodLibrary(food),
   };
-  getDayLog(state.activeDate).items.unshift(item);
-  getDayLog(state.activeDate).items = getDayLog(state.activeDate).items.slice(0, MAX_LOG_ITEMS_PER_DAY);
+  getDayLog(meta.recordDate).items.unshift(item);
   persistState({ syncEligible: true });
   renderAll();
-  DOM.foodSearchStatus.textContent = `${foodDisplayName(food)} 已加入`;
+  DOM.foodSearchStatus.textContent = `${foodDisplayName(food)} 已加入 ${formatDateWindow(meta.recordDate)}`;
 }
-
 
 function nutrientsForFood(food) {
   return food.customPer100 ? food.customPer100 : normalizedFoodNutrients(food);
@@ -1617,8 +1722,8 @@ function onLogListClick(event) {
     const items = getDayLog(state.activeDate).items;
     const source = items[idx];
     if (source) {
-      items.unshift({ ...source, id: uid('log'), createdAt: new Date().toISOString(), duplicatedFrom: source.id || '' });
-      getDayLog(state.activeDate).items = items.slice(0, MAX_LOG_ITEMS_PER_DAY);
+      const meta = recordMetaForDate(state.activeDate);
+      items.unshift({ ...source, id: uid('log'), ...meta, duplicatedFrom: source.id || '' });
       persistState({ syncEligible: true });
       renderAll();
     }
@@ -1656,11 +1761,24 @@ function saveBodyRecord() {
     DOM.bodyStatusHint.textContent = '请先填写至少一项身体数据';
     return;
   }
-  state.bodyHistory.unshift(record);
+  const recordKey = record.recordDate || todayString();
+  const existingIndex = state.bodyHistory.findIndex((item) => normalizeDateKey(item.recordDate || dateKeyFromTimestamp(item.recordedAt), '') === recordKey);
+  if (existingIndex >= 0) {
+    state.bodyHistory[existingIndex] = normalizeBodyRecord({
+      ...state.bodyHistory[existingIndex],
+      ...record,
+      recordedAt: state.bodyHistory[existingIndex].recordedAt || record.recordedAt,
+      updatedAt: new Date().toISOString(),
+    });
+    DOM.bodyStatusHint.textContent = `已更新 ${formatDateWindow(recordKey)} 的身体维度，模型与建议已更新`;
+  } else {
+    state.bodyHistory.unshift(record);
+    DOM.bodyStatusHint.textContent = `身体记录已保存到 ${formatDateWindow(recordKey)}，模型与建议已更新`;
+  }
   state.bodyHistory = normalizeBodyHistory(state.bodyHistory);
-  DOM.bodyStatusHint.textContent = '身体记录已保存，模型与建议已更新';
   persistState({ syncEligible: true });
   renderAll();
+  window.requestAnimationFrame(() => collapseCompletedCards());
 }
 
 function clearTodayLog() {
@@ -1671,8 +1789,8 @@ function clearTodayLog() {
 
 
 function setActiveDate(value) {
-  const next = String(value || '').trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) return;
+  const next = normalizeDateKey(value, '');
+  if (!next) return;
   state.activeDate = next;
   renderAll();
   persistState({ syncEligible: false });
@@ -1683,38 +1801,50 @@ function shiftActiveDate(delta) {
 }
 
 function offsetDateString(value, deltaDays) {
-  const date = new Date(String(value || todayString()) + 'T00:00:00');
+  const key = normalizeDateKey(value, todayString());
+  const [year, month, day] = key.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
   if (Number.isNaN(date.getTime())) return todayString();
   date.setDate(date.getDate() + Number(deltaDays || 0));
-  return date.toISOString().slice(0, 10);
+  return localDateStringFromDate(date);
 }
 
 function addWaterToToday(ml = 250) {
   const amount = clamp(Number(ml) || 250, 50, 2000);
   const nutrients = createEmptyTotals();
   nutrients.water = amount;
-  getDayLog(state.activeDate).items.unshift({
+  const meta = recordMetaForDate(state.activeDate);
+  getDayLog(meta.recordDate).items.unshift({
     id: uid('log'),
-    createdAt: new Date().toISOString(),
+    ...meta,
     label: '饮水 ' + Math.round(amount) + 'mL',
     labels: { zh: '饮水 ' + Math.round(amount) + 'mL', en: 'Water', original: 'Water' },
     grams: null,
     nutrients,
     source: 'quick-water',
   });
-  getDayLog(state.activeDate).items = getDayLog(state.activeDate).items.slice(0, MAX_LOG_ITEMS_PER_DAY);
   persistState({ syncEligible: true });
   renderAll();
 }
 
 function getDayLog(date) {
-  if (!state.logs[date]) state.logs[date] = { items: [] };
-  return state.logs[date];
+  const key = normalizeDateKey(date, todayString());
+  const boundary = dayBoundaryFor(key);
+  if (!state.logs[key]) state.logs[key] = { ...boundary, items: [] };
+  else {
+    state.logs[key].recordDate = boundary.recordDate;
+    state.logs[key].dayStart = state.logs[key].dayStart || boundary.dayStart;
+    state.logs[key].dayEnd = state.logs[key].dayEnd || boundary.dayEnd;
+    if (!Array.isArray(state.logs[key].items)) state.logs[key].items = [];
+  }
+  return state.logs[key];
 }
 
-function computeTotalsForDate(date) {
+function computeTotalsForDate(date, options = {}) {
   const totals = createEmptyTotals();
-  const items = getDayLog(date).items;
+  const key = normalizeDateKey(date, todayString());
+  const entry = options.create === false ? state.logs?.[key] : getDayLog(key);
+  const items = entry?.items || [];
   items.forEach((item) => mergeTotals(totals, item.nutrients || {}));
   return totals;
 }
@@ -2019,10 +2149,12 @@ function addCaptureFoodToToday() {
   const factor = servings;
   const nutrients = {};
   Object.entries(baseNutrients).forEach(([id, value]) => { nutrients[id] = Number(value) * factor; });
-  getDayLog(state.activeDate).items.unshift({
+  const meta = recordMetaForDate(state.activeDate);
+  getDayLog(meta.recordDate).items.unshift({
     id: uid('log'),
-    createdAt: new Date().toISOString(),
+    ...meta,
     label: name,
+    labels: buildCustomFoodLabels(name),
     grams: basis === 'serving' && Number(DOM.captureServingSize.value) ? round1(Number(DOM.captureServingSize.value) * servings) : (basis === '100g' ? round1(100 * servings) : null),
     nutrients,
     source: 'capture',
@@ -2162,6 +2294,7 @@ function exportAllData() {
   snapshot.exportMeta = {
     exportedAt: new Date().toISOString(),
     platform: state.platform.key,
+    dayBoundaryRule: 'local natural day 00:00-23:59',
     bodyRecords: state.bodyHistory.length,
     logDays: Object.keys(state.logs || {}).length,
     customFoods: state.customFoods.length,
@@ -2175,7 +2308,7 @@ function exportAllData() {
 
 
 function exportBodyCsv() {
-  const header = ['recordedAt', 'heightCm', 'weightKg', 'bodyFat', 'neck', 'shoulder', 'chest', 'underbust', 'waist', 'abdomen', 'hip', 'upperArm', 'forearm', 'thigh', 'calf', 'ankle'];
+  const header = ['recordDate', 'dayStart', 'dayEnd', 'recordedAt', 'updatedAt', 'heightCm', 'weightKg', 'bodyFat', 'neck', 'shoulder', 'chest', 'underbust', 'waist', 'abdomen', 'hip', 'upperArm', 'forearm', 'thigh', 'calf', 'ankle'];
   const rows = [header.join(',')].concat(state.bodyHistory.map((record) => header.map((key) => csvEscape(record[key] ?? '')).join(',')));
   const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
   downloadBlob(blob, `haochijia-body-${compactDateTime()}.csv`);
@@ -2417,7 +2550,7 @@ function makeSnapshot({ includeSecrets = true, includePhoto = false } = {}) {
       focusNote: String(DOM.profileForm.focusNote.value || '').trim().slice(0, 120),
     },
     bodyHistory: normalizeBodyHistory(state.bodyHistory),
-    logs: state.logs,
+    logs: normalizeLogs(state.logs),
     customFoods: state.customFoods,
     photoShape: state.photoShape,
     preferences: {
@@ -2449,10 +2582,57 @@ function detectPlatform() {
 
 function todayString() {
   const now = new Date();
-  const y = now.getFullYear();
-  const m = `${now.getMonth() + 1}`.padStart(2, '0');
-  const d = `${now.getDate()}`.padStart(2, '0');
+  return localDateStringFromDate(now);
+}
+
+function localDateStringFromDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  const y = date.getFullYear();
+  const m = `${date.getMonth() + 1}`.padStart(2, '0');
+  const d = `${date.getDate()}`.padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+function normalizeDateKey(value, fallback = todayString()) {
+  const raw = String(value || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  if (raw) {
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) return localDateStringFromDate(parsed);
+  }
+  return fallback || '';
+}
+
+function dateKeyFromTimestamp(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? '' : localDateStringFromDate(parsed);
+}
+
+function dayBoundaryFor(value) {
+  const recordDate = normalizeDateKey(value, todayString());
+  return {
+    recordDate,
+    dayStart: `${recordDate}T00:00:00`,
+    dayEnd: `${recordDate}T23:59:59.999`,
+  };
+}
+
+function timestampForRecordDate(value) {
+  const recordDate = normalizeDateKey(value, todayString());
+  const [year, month, day] = recordDate.split('-').map(Number);
+  const now = new Date();
+  const local = new Date(year, month - 1, day, now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+  return local.toISOString();
+}
+
+function recordMetaForDate(value) {
+  const boundary = dayBoundaryFor(value);
+  return {
+    ...boundary,
+    createdAt: timestampForRecordDate(boundary.recordDate),
+  };
 }
 
 function uid(prefix = 'id') {
@@ -3072,24 +3252,31 @@ function exportBodyJson() {
     },
     photoShape: state.photoShape,
     bodyHistory: normalizeBodyHistory(state.bodyHistory),
+    exportMeta: {
+      dayBoundaryRule: 'local natural day 00:00-23:59',
+      bodyRecords: state.bodyHistory.length,
+    },
   };
   downloadJson(payload, `haochijia-body-${compactDateTime()}.json`);
 }
 
-
-
 function exportIntakeCsv() {
   const rows = [[
-    'date', 'time', 'label', 'zh', 'en', 'original', 'library', 'code', 'grams',
-    'kcal', 'protein', 'carbs', 'fat', 'fiber', 'calcium', 'iron'
+    'recordDate', 'dayStart', 'dayEnd', 'createdAt', 'label', 'zh', 'en', 'original', 'library', 'code', 'grams',
+    'kcal', 'protein', 'carbs', 'fat', 'fiber', 'calcium', 'iron', 'water', 'sodium'
   ].join(',')];
   const days = Object.keys(state.logs || {}).sort();
   days.forEach((date) => {
-    const items = state.logs?.[date]?.items || [];
+    const key = normalizeDateKey(date, todayString());
+    const entry = state.logs?.[date] || {};
+    const boundary = dayBoundaryFor(entry.recordDate || key);
+    const items = entry.items || [];
     items.forEach((item) => {
       const labels = normalizeFoodLabels(item);
       rows.push([
-        csvEscape(date),
+        csvEscape(item.recordDate || boundary.recordDate),
+        csvEscape(item.dayStart || boundary.dayStart),
+        csvEscape(item.dayEnd || boundary.dayEnd),
         csvEscape(item.createdAt || ''),
         csvEscape(item.label || labels.zh || ''),
         csvEscape(labels.zh || ''),
@@ -3105,14 +3292,14 @@ function exportIntakeCsv() {
         csvEscape(item.nutrients?.fiber ?? ''),
         csvEscape(item.nutrients?.calcium ?? ''),
         csvEscape(item.nutrients?.iron ?? ''),
+        csvEscape(item.nutrients?.water ?? ''),
+        csvEscape(item.nutrients?.sodium ?? ''),
       ].join(','));
     });
   });
   const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
   downloadBlob(blob, `haochijia-intake-${compactDateTime()}.csv`);
 }
-
-
 
 async function pushLocalBackup(snapshot) {
   const existing = await idbGet(V32_IDB_BACKUP_KEY).catch(() => []);
