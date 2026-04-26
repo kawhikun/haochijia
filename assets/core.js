@@ -12,9 +12,9 @@ import {
   clamp,
   NUTRIENT_DEFS,
   OCR_FIELD_MAP,
-} from './nutrition-refs.js?v=20260426i';
-import { buildSmartFoodLabels } from './food-label-upgrade.js?v=20260426i';
-import { createBodyModelController } from './model-scene.js?v=20260426i';
+} from './nutrition-refs.js?v=20260426j';
+import { buildSmartFoodLabels } from './food-label-upgrade.js?v=20260426j';
+import { createBodyModelController } from './model-scene.js?v=20260426j';
 
 const STORAGE_KEY = 'haochijia.core.v39.snapshot';
 const DB_NAME = 'haochijia-core-v39';
@@ -150,7 +150,7 @@ const DEFAULT_GITHUB = {
 
 const DOM = {};
 const state = {
-  version: 'v41',
+  version: 'v42',
   platform: detectPlatform(),
   profile: { ...defaultProfile(), bodyFat: 22, focusNote: '' },
   bodyHistory: [],
@@ -185,7 +185,7 @@ const state = {
   githubSyncTimer: null,
 };
 
-const V32_BUILD_VERSION = 'v41-lite-standard-body-performance-fix';
+const V32_BUILD_VERSION = 'v42-mobile-touch-body-model-scientific-advice';
 const V32_STORAGE_KEYS = [STORAGE_KEY, 'haochijia.core.v38.snapshot', 'haochijia.core.v37.snapshot', 'haochijia.core.v36.snapshot', 'haochijia.core.v34.snapshot', 'haochijia.core.v33.snapshot', 'haochijia.core.v32.snapshot', 'haochijia.core.v31.snapshot'];
 const V32_IDB_SNAPSHOT_KEYS = ['snapshot-v39', 'snapshot-v38', 'snapshot-v37', 'snapshot-v36', 'snapshot-v34', 'snapshot-v33', 'snapshot-v32', 'snapshot'];
 const V32_IDB_BACKUP_KEY = 'snapshot-history-v39';
@@ -193,8 +193,8 @@ const LOCAL_BACKUP_LIMIT = 18;
 const FOOD_REGION_OPTIONS = new Set(['all', 'cn', 'intl']);
 const FOOD_NAME_MODE_OPTIONS = new Set(['zh', 'en', 'original']);
 const V32_FOOD_BANK_FILES = Object.freeze({
-  cn: ['./data/foods-cn.min.json?v=20260426i'],
-  intl: ['./data/foods-global.part01.min.json?v=20260426i', './data/foods-global.part02.min.json?v=20260426i'],
+  cn: ['./data/foods-cn.min.json?v=20260426j'],
+  intl: ['./data/foods-global.part01.min.json?v=20260426j', './data/foods-global.part02.min.json?v=20260426j'],
 });
 const FOOD_LIBRARY_AUDIT = Object.freeze({
   cn: { label: '中文库', file: 'foods-cn.min.json', rows: 36793, missingZh: 0, missingEn: 0, missingOriginal: 0, missingCode: 0 },
@@ -915,9 +915,9 @@ function scheduleSoftRefresh() {
 }
 
 function renderHeroMeta() {
-  const platformText = state.platform.key === 'ios' ? 'iPhone 标准模型' : state.platform.key === 'android' ? 'Android 标准模型' : '标准人体模型';
-  DOM.focusModePill.textContent = `${platformText} · 营养环联动`;
-  DOM.focusModeText.textContent = `${nutrientDisplayName(state.activeRing)} 高亮 · 标准人体网格实时塑形 · 拖旋 / 缩放 / 双击回正`;
+  const platformText = state.platform.key === 'ios' ? 'iPhone 触控标准模型' : state.platform.key === 'android' ? 'Android 触控标准模型' : '标准人体模型';
+  DOM.focusModePill.textContent = `${platformText} · 身体维度实时塑形`;
+  DOM.focusModeText.textContent = `${nutrientDisplayName(state.activeRing)} 高亮 · 单指旋转 · 双指缩放 · 双击回正`;
 }
 
 function renderHeroTelemetry() {
@@ -1045,7 +1045,7 @@ function renderAdviceBasisPanel() {
 
 
 function buildSuggestionCards() {
-  const ids = Array.from(new Set([...state.focusMode.nutrientIds.slice(3), 'protein', 'fiber', 'water', 'sodium', 'satFat'])).filter((id) => state.calc.targets[id]);
+  const ids = Array.from(new Set([...state.focusMode.nutrientIds.slice(3), 'protein', 'fiber', 'water', 'sodium', 'satFat', 'sugar'])).filter((id) => state.calc.targets[id]);
   const cards = ids.map((id) => {
     const target = state.calc.targets[id];
     const current = Number(state.totals[id] || 0);
@@ -1066,7 +1066,7 @@ function buildSuggestionCards() {
       if (progress > 1) {
         priorityClass = 'priority-high';
         subtitle = '当前偏高，约多出 ' + formatCompactNutrient(id, deficit) + '。';
-        action = (id === 'sodium' || id === 'satFat') ? '后续餐次选择少盐少酱、少油炸加工食品。' : '后续餐次降低高负荷来源，优先清淡搭配。';
+        action = id === 'sodium' ? '后续餐次选择少盐少酱、少加工食品，优先用天然香辛料提味。' : (id === 'satFat' ? '后续餐次减少油炸、肥肉、奶油类来源，优先鱼禽豆制品和坚果。' : (id === 'sugar' ? '后续餐次减少含糖饮料、甜点和甜酱，优先完整水果。' : '后续餐次降低高负荷来源，优先清淡搭配。'));
       } else {
         priorityClass = progress > 0.85 ? 'priority-watch' : 'priority-ok';
         subtitle = '当前在上限 ' + formatCompactNutrient(id, goal) + ' 内。';
@@ -1092,9 +1092,10 @@ function buildSuggestionCards() {
     if (id === 'protein') action += ' 蛋白质尽量分配到 3-4 餐。';
     if (id === 'fiber') action += ' 纤维增加时同步饮水，避免肠胃不适。';
     if (id === 'water') action += ' 分时段小口补水，不需要集中猛喝。';
+    if (id === 'sugar') action += ' 食品库多为总糖字段，建议结合配料表判断是否为添加糖。';
     const basis = target.type === 'range'
-      ? '依据：个人资料、生理状态、活动量与目标计算；推荐区间 ' + formatCompactNutrient(id, Number(target.min || 0)) + '-' + formatCompactNutrient(id, Number(target.max || goal)) + '，当前按优先目标 ' + formatCompactNutrient(id, goal) + ' 评估。'
-      : '依据：个人资料与今日已记录摄入；' + (target.type === 'max' ? '按上限控制' : '按推荐目标补足') + '，每次输入都会重算。';
+      ? '依据：个人资料、生理状态、活动量、目标、今日已记录摄入与近 7 天历史趋势；推荐区间 ' + formatCompactNutrient(id, Number(target.min || 0)) + '-' + formatCompactNutrient(id, Number(target.max || goal)) + '，当前按优先目标 ' + formatCompactNutrient(id, goal) + ' 评估。' + (target.note ? ' ' + target.note : '')
+      : '依据：个人资料、今日已记录摄入与近 7 天历史趋势；' + (target.type === 'max' ? '按上限控制' : '按推荐目标补足') + '，每次输入都会重算。' + (target.note ? ' ' + target.note : '');
     return { id, relevance, title, subtitle, action, basis: basis + ' ' + historyReference, foods: hintFoods, priorityClass };
   }).sort((a, b) => b.relevance - a.relevance).slice(0, 6);
   return cards;
@@ -1112,7 +1113,16 @@ function historicalIntakeReference(id, target, lookbackDays = 7) {
   if (!values.length) return '历史参考：近 7 天暂无有效摄入记录。';
   const avg = values.reduce((sum, value) => sum + value, 0) / values.length;
   const met = values.filter((value) => intakeMeetsTarget(value, target)).length;
-  return `历史参考：近 ${values.length} 个有记录日平均 ${formatCompactNutrient(id, avg)}，达标 ${met}/${values.length} 天。`;
+  const recent3 = values.slice(0, 3);
+  let trend = '';
+  if (recent3.length >= 3) {
+    const allHigh = target?.type === 'max'
+      ? recent3.every((value) => value > Number(target.target || 0))
+      : recent3.every((value) => !intakeMeetsTarget(value, target));
+    if (allHigh && target?.type === 'max') trend = ' 最近 3 个有记录日持续偏高，建议优先调整。';
+    if (allHigh && target?.type !== 'max') trend = ' 最近 3 个有记录日持续不足，建议优先补齐。';
+  }
+  return `历史参考：近 ${values.length} 个有记录日平均 ${formatCompactNutrient(id, avg)}，达标 ${met}/${values.length} 天。${trend}`;
 }
 
 function intakeMeetsTarget(value, target) {

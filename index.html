@@ -3,16 +3,16 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="description" content="好吃家 v41：内嵌标准人体模型，身体维度实时塑形；基础数据与身体维度可折叠；身体记录和摄入记录按本地自然日 0:00-23:59 更新并支持历史导出。">
+    <meta name="description" content="好吃家 v42：更顺滑的标准 3D 人体模型，身体维度实时塑形；支持移动端单指旋转、双指缩放；营养建议参考今日与近 7 天历史摄入。">
     <meta name="theme-color" content="#f8f3ea">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>Haochijia v41 Lite Body Model</title>
+    <title>Haochijia v42 Mobile Body Model</title>
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="icon" href="./assets/logo.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./assets/icon-192.png">
-    <link rel="stylesheet" href="./assets/styles.css?v=20260426i">
+    <link rel="stylesheet" href="./assets/styles.css?v=20260426j">
   </head>
   <body>
     <div class="app-shell" id="appShell">
@@ -37,8 +37,8 @@
           <div class="stage-photo-ref" id="stagePhotoRef"></div>
           <canvas id="bodyCanvas" class="body-canvas" width="900" height="1100"></canvas>
           <div class="hero-label">
-            <span class="mode-pill" id="focusModePill">标准人体模型 + 营养环</span>
-            <strong id="focusModeText">胸腰臀与四肢维度实时塑形</strong>
+            <span class="mode-pill" id="focusModePill">标准人体模型 · 可触控旋转</span>
+            <strong id="focusModeText">胸腰臀、肩臂腿实时塑形 · 单指旋转 / 双指缩放</strong>
           </div>
           <div class="ring-orbit" id="ringOrbit"></div>
         </section>
@@ -447,6 +447,6 @@
 
     <input id="importInput" type="file" accept=".json,.csv" hidden>
 
-    <script type="module" src="./assets/core.js?v=20260426i"></script>
+    <script type="module" src="./assets/core.js?v=20260426j"></script>
   </body>
 </html>

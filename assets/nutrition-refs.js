@@ -382,12 +382,16 @@ function fatRange(profile, calories) {
 }
 
 function waterTarget(profile, dri) {
+  // App logs drinking water directly, so use drinking-water guidance rather than total-water AI.
+  // Chinese Dietary Guidelines 2022: low-activity adults in mild climate, men about 1700 mL/day and women about 1500 mL/day.
+  let base = profile.sex === 'male' ? 1700 : 1500;
+  if (profile.physiology?.startsWith('pregnant')) base += 200;
+  if (profile.physiology?.startsWith('lactation')) base += 600;
   let extra = 0;
-  if (profile.activity === 'lowActive') extra += 200;
-  if (profile.activity === 'active') extra += 450;
-  if (profile.activity === 'veryActive') extra += 800;
-  if (profile.trainingHoursWeek > 0) extra += Math.min(1400, Math.round((profile.trainingHoursWeek / 7) * 250));
-  return dri.waterMl + extra;
+  if (profile.activity === 'active') extra += 250;
+  if (profile.activity === 'veryActive') extra += 500;
+  if (profile.trainingHoursWeek > 0) extra += Math.min(900, Math.round((profile.trainingHoursWeek / 7) * 250));
+  return Math.max(base + extra, Math.min(Number(dri.waterMl || 0), base + extra + 900));
 }
 
 function glucoseStatusNote(profile) {
@@ -509,7 +513,7 @@ export function calculateTargets(rawProfile = {}) {
   }
   if (profile.lowSun) vitaminDMcg = Math.max(vitaminDMcg, profile.age >= 70 ? 20 : 15);
 
-  const sodiumMax = profile.conditions.hypertension ? 1500 : 2300;
+  const sodiumMax = profile.conditions.hypertension ? 1500 : 2000;
   const satFatMax = (calories * (profile.conditions.dyslipidemia ? 0.06 : 0.10)) / 9;
   const sugarWatch = (calories * 0.10) / 4;
   const waterMl = waterTarget(profile, dri);
@@ -520,9 +524,9 @@ export function calculateTargets(rawProfile = {}) {
     carbs: { id: 'carbs', type: 'range', min: round1(carbRangeVal.min), max: round1(carbRangeVal.max), preferred: round1(carbRangeVal.preferred), unit: 'g', label: '碳水', note: carbRangeVal.note },
     fat: { id: 'fat', type: 'range', min: round1(fatRangeVal.min), max: round1(fatRangeVal.max), preferred: round1(fatRangeVal.preferred), unit: 'g', label: '脂肪', note: '更偏向脂肪质量，而不是单纯越低越好。' },
     fiber: { id: 'fiber', type: 'min', target: round1(fiberGoal), unit: 'g', label: '膳食纤维', note: '糖代谢风险模式会提高纤维下限。' },
-    water: { id: 'water', type: 'min', target: round0(waterMl), unit: 'mL', label: '饮水 / 总水', note: '已按活动量和训练时长额外上调。' },
-    sodium: { id: 'sodium', type: 'max', target: round0(sodiumMax), unit: 'mg', label: '钠', note: profile.conditions.hypertension ? '高血压模式按 1500 mg / 天更严格控制。' : '建议尽量不超过 2300 mg / 天。' },
-    satFat: { id: 'satFat', type: 'max', target: round1(satFatMax), unit: 'g', label: '饱和脂肪', note: profile.conditions.dyslipidemia ? '血脂风险模式采用更严格上限。' : '按总热量约 10% 估算。' },
+    water: { id: 'water', type: 'min', target: round0(waterMl), unit: 'mL', label: '饮水', note: '按中国居民膳食指南的日饮水建议为基础，并按活动量和训练时长适度上调。' },
+    sodium: { id: 'sodium', type: 'max', target: round0(sodiumMax), unit: 'mg', label: '钠', note: profile.conditions.hypertension ? '高血压模式先按 1500 mg / 天更严格控制；肾病或用药人群以医生建议为准。' : '普通模式按 WHO 成人钠摄入少于 2000 mg / 天控制。' },
+    satFat: { id: 'satFat', type: 'max', target: round1(satFatMax), unit: 'g', label: '饱和脂肪', note: profile.conditions.dyslipidemia ? '血脂风险模式采用更严格上限，约按总热量 6% 估算。' : '按 WHO 建议的总热量约 10% 上限估算。' },
     potassium: { id: 'potassium', type: 'min', target: round0(dri.potassiumMg), unit: 'mg', label: '钾', note: '长期偏低比单日波动更值得关注。' },
     calcium: { id: 'calcium', type: 'min', target: round0(calciumMg), unit: 'mg', label: '钙', note: profile.conditions.boneRisk || profile.conditions.jointPain || menopauseBoneMode ? '骨关节 / 围绝经模式会优先保证钙。' : '' },
     phosphorus: { id: 'phosphorus', type: 'min', target: round0(dri.phosphorusMg), unit: 'mg', label: '磷', note: '' },
@@ -580,7 +584,6 @@ export function calculateTargets(rawProfile = {}) {
   const modeProteinMax = round1(TRAINING_MODES[profile.training].proteinMaxKg * profile.weightKg);
 
   const basisRows = [
-    { label: '年龄分组', value: ageBand.replace('_', '–').replace('plus', '+') },
     { label: 'BMI', value: bmi.toString() },
     { label: '活动水平', value: ACTIVITY_LEVELS[profile.activity].label },
     { label: '训练模式', value: TRAINING_MODES[profile.training].label },
@@ -594,6 +597,8 @@ export function calculateTargets(rawProfile = {}) {
     { label: '当前蛋白建议', value: `${round1(proteinRangeVal.preferred)} g / 天（${round1(proteinRangeVal.min)} – ${round1(proteinRangeVal.max)}）` },
     { label: 'EER 估算', value: `${round0(eer)} kcal` },
     { label: '目标热量', value: `${round0(calories)} kcal` },
+    { label: '钠上限', value: `${round0(sodiumMax)} mg / 天` },
+    { label: '饮水目标', value: `${round0(waterMl)} mL / 天` },
   ];
 
   return {
