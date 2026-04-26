@@ -1,4 +1,4 @@
-export const APP_VERSION = '3.4.0';
+export const APP_VERSION = '3.7.0';
 
 export const ACTIVITY_LEVELS = {
   sedentary: { label: '久坐', short: '久坐', description: '日常走动少，几乎不安排运动' },

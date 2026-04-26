@@ -651,13 +651,13 @@ function createWebGLBodyScene(canvas, THREE, OrbitControls, options) {
   }
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = perf.reduced ? 1.12 : 1.22;
+  renderer.toneMappingExposure = perf.reduced ? 1.16 : 1.28;
   renderer.shadowMap.enabled = perf.shadows;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.setClearAlpha(0);
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(isIOS ? 0xf8f1e8 : isAndroid ? 0xf2f7ed : 0xf7f3ea, 5.8, isAndroid ? 13.2 : 12.4);
+  scene.fog = new THREE.Fog(isIOS ? 0xf7f2ea : isAndroid ? 0xf2f7ed : 0xf6f3ec, 6.2, isAndroid ? 13.8 : 13.1);
 
   const camera = new THREE.PerspectiveCamera(isIOS ? 24.8 : isAndroid ? 25.2 : 25.5, 1, 0.1, 30);
   const controls = new OrbitControls(camera, canvas);
@@ -672,10 +672,10 @@ function createWebGLBodyScene(canvas, THREE, OrbitControls, options) {
   controls.zoomSpeed = isIOS ? 1.05 : isAndroid ? 0.98 : 0.96;
   controls.rotateSpeed = isIOS ? 0.96 : isAndroid ? 0.9 : 0.82;
   controls.autoRotate = !perf.reduced;
-  controls.autoRotateSpeed = isIOS ? 0.44 : isAndroid ? 0.54 : 0.48;
+  controls.autoRotateSpeed = isIOS ? 0.38 : isAndroid ? 0.46 : 0.42;
 
   const white = new THREE.Color(0xffffff);
-  const deepSlate = new THREE.Color(0xf7f3ea);
+  const deepSlate = new THREE.Color(0xf5efe6);
 
   const hemi = new THREE.HemisphereLight(isIOS ? 0xfff8ff : isAndroid ? 0xf8fff8 : 0xfffbf4, isIOS ? 0xd6c4ec : isAndroid ? 0xcfe5d5 : 0xd9cced, perf.reduced ? 1.46 : (isIOS ? 1.76 : isAndroid ? 1.7 : 1.72));
   scene.add(hemi);

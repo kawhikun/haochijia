@@ -3,16 +3,16 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="description" content="好吃家 v36：NourishNest 全面强化版，首页 3D 人体模型与 6 条动态营养环、身体数据记录、状态化营养建议、双食品库、拍照摄入分析、导入导出和 GitHub 云端同步。">
+    <meta name="description" content="好吃家 v37：Comprehensive Strengthened Build，重做 3D 人体模型面板、6 条缓动营养环、实时联动身体数据、完整中文食品库翻译、科学营养建议、增强的每日摄入记录与拍照识别。">
     <meta name="theme-color" content="#f8f3ea">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>Haochijia v36 NourishNest</title>
+    <title>Haochijia v37 Comprehensive Strengthened</title>
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="icon" href="./assets/logo.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./assets/icon-192.png">
-    <link rel="stylesheet" href="./assets/styles.css?v=20260426c">
+    <link rel="stylesheet" href="./assets/styles.css?v=20260426d">
   </head>
   <body>
     <div class="app-shell" id="appShell">
@@ -37,7 +37,7 @@
           <div class="stage-photo-ref" id="stagePhotoRef"></div>
           <canvas id="bodyCanvas" class="body-canvas" width="900" height="1100"></canvas>
           <div class="hero-label">
-            <span class="mode-pill" id="focusModePill">3D Body Core + 6 Nutrition Rings</span>
+            <span class="mode-pill" id="focusModePill">Enhanced 3D Body Core + 6 Live Rings</span>
             <strong id="focusModeText">拖旋 / 缩放 / 双击回正</strong>
           </div>
           <div class="ring-orbit" id="ringOrbit"></div>
@@ -53,7 +53,7 @@
             <article class="card compact-card">
               <div class="section-head compact-head">
                 <h2>用户状态</h2>
-                <span class="subtle-note" id="bodyStatusHint">输入即暂存 · 保存不跳页</span>
+                <span class="subtle-note" id="bodyStatusHint">输入即联动 · 保存不跳页</span>
               </div>
               <form id="profileForm" class="form-grid">
                 <label class="field">
@@ -230,7 +230,7 @@
           <section class="panel" data-panel="intake">
             <article class="card compact-card">
               <div class="section-head compact-head">
-                <h2>食品库</h2>
+                <h2>食品库（中文优先）</h2>
                 <span class="subtle-note" id="foodSearchStatus">待输入</span>
               </div>
               <div class="filter-row">
@@ -241,7 +241,7 @@
                 </div>
                 <div class="segment-group" id="foodLanguageGroup" aria-label="名称语言">
                   <button type="button" class="segment-btn is-active" data-food-lang="zh">中文</button>
-                  <button type="button" class="segment-btn" data-food-lang="en">EN</button>
+                  <button type="button" class="segment-btn" data-food-lang="en">英文</button>
                   <button type="button" class="segment-btn" data-food-lang="original">原始</button>
                 </div>
               </div>
@@ -285,7 +285,7 @@
 
             <article class="card compact-card">
               <div class="section-head compact-head">
-                <h2>拍照分析</h2>
+                <h2>拍照分析（营养表 / 食品）</h2>
                 <span class="subtle-note" id="captureStatus">未选择图片</span>
               </div>
               <div class="capture-row">
@@ -322,7 +322,7 @@
 
             <article class="card compact-card">
               <div class="section-head compact-head">
-                <h2>营养进度</h2>
+                <h2>营养进度与达标率</h2>
                 <span class="subtle-note" id="dayTotalBadge">今天</span>
               </div>
               <div class="progress-list" id="progressList"></div>
@@ -330,7 +330,7 @@
 
             <article class="card compact-card">
               <div class="section-head compact-head">
-                <h2>今日记录</h2>
+                <h2>今日记录（自动分餐）</h2>
                 <button type="button" class="ghost-btn tiny-btn" id="clearDayBtn">清空</button>
               </div>
               <div class="log-list" id="logList"></div>
@@ -426,6 +426,6 @@
 
     <input id="importInput" type="file" accept=".json,.csv" hidden>
 
-    <script type="module" src="./assets/core.js?v=20260426c"></script>
+    <script type="module" src="./assets/core.js?v=20260426d"></script>
   </body>
 </html>
