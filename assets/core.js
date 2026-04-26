@@ -12,9 +12,9 @@ import {
   clamp,
   NUTRIENT_DEFS,
   OCR_FIELD_MAP,
-} from './nutrition-refs.js?v=20260426h';
-import { buildSmartFoodLabels } from './food-label-upgrade.js?v=20260426h';
-import { createBodyModelController } from './model-scene.js?v=20260426h';
+} from './nutrition-refs.js?v=20260426i';
+import { buildSmartFoodLabels } from './food-label-upgrade.js?v=20260426i';
+import { createBodyModelController } from './model-scene.js?v=20260426i';
 
 const STORAGE_KEY = 'haochijia.core.v39.snapshot';
 const DB_NAME = 'haochijia-core-v39';
@@ -150,7 +150,7 @@ const DEFAULT_GITHUB = {
 
 const DOM = {};
 const state = {
-  version: 'v40',
+  version: 'v41',
   platform: detectPlatform(),
   profile: { ...defaultProfile(), bodyFat: 22, focusNote: '' },
   bodyHistory: [],
@@ -185,7 +185,7 @@ const state = {
   githubSyncTimer: null,
 };
 
-const V32_BUILD_VERSION = 'v40-embedded-standard-body-no-telemetry';
+const V32_BUILD_VERSION = 'v41-lite-standard-body-performance-fix';
 const V32_STORAGE_KEYS = [STORAGE_KEY, 'haochijia.core.v38.snapshot', 'haochijia.core.v37.snapshot', 'haochijia.core.v36.snapshot', 'haochijia.core.v34.snapshot', 'haochijia.core.v33.snapshot', 'haochijia.core.v32.snapshot', 'haochijia.core.v31.snapshot'];
 const V32_IDB_SNAPSHOT_KEYS = ['snapshot-v39', 'snapshot-v38', 'snapshot-v37', 'snapshot-v36', 'snapshot-v34', 'snapshot-v33', 'snapshot-v32', 'snapshot'];
 const V32_IDB_BACKUP_KEY = 'snapshot-history-v39';
@@ -193,8 +193,8 @@ const LOCAL_BACKUP_LIMIT = 18;
 const FOOD_REGION_OPTIONS = new Set(['all', 'cn', 'intl']);
 const FOOD_NAME_MODE_OPTIONS = new Set(['zh', 'en', 'original']);
 const V32_FOOD_BANK_FILES = Object.freeze({
-  cn: ['./data/foods-cn.min.json?v=20260426h'],
-  intl: ['./data/foods-global.part01.min.json?v=20260426h', './data/foods-global.part02.min.json?v=20260426h'],
+  cn: ['./data/foods-cn.min.json?v=20260426i'],
+  intl: ['./data/foods-global.part01.min.json?v=20260426i', './data/foods-global.part02.min.json?v=20260426i'],
 });
 const FOOD_LIBRARY_AUDIT = Object.freeze({
   cn: { label: '中文库', file: 'foods-cn.min.json', rows: 36793, missingZh: 0, missingEn: 0, missingOriginal: 0, missingCode: 0 },
@@ -921,7 +921,7 @@ function renderHeroMeta() {
 }
 
 function renderHeroTelemetry() {
-  // v40: 模型界面不再显示体重、BMI、腰臀比、目标热量、蛋白、水分这 6 个指标浮层，避免遮挡营养环。
+  // v41: 模型界面不再显示体重、BMI、腰臀比、目标热量、蛋白、水分这 6 个指标浮层，避免遮挡营养环。
   if (DOM.heroTelemetry) {
     DOM.heroTelemetry.innerHTML = '';
     DOM.heroTelemetry.hidden = true;

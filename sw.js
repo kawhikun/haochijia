@@ -1,15 +1,16 @@
-const CACHE_NAME = 'haochijia-v40-embedded-body-20260426h';
+const CACHE_NAME = 'haochijia-v41-lite-body-20260426i';
 const APP_SHELL = [
   './',
   './index.html',
   './404.html',
   './manifest.webmanifest',
-  './assets/styles.css?v=20260426h',
-  './assets/core.js?v=20260426h',
-  './assets/model-scene.js?v=20260426h',
-  './assets/body-models/standard-bodies.json?v=20260426h',
-  './assets/food-label-upgrade.js?v=20260426h',
-  './assets/nutrition-refs.js?v=20260426h',
+  './assets/styles.css?v=20260426i',
+  './assets/core.js?v=20260426i',
+  './assets/model-scene.js?v=20260426i',
+  './assets/body-models/standard-bodies-lite.json?v=20260426i',
+  './assets/body-models/standard-bodies.json?v=20260426i',
+  './assets/food-label-upgrade.js?v=20260426i',
+  './assets/nutrition-refs.js?v=20260426i',
   './assets/icon-192.png',
   './assets/icon-512.png',
   './assets/logo.svg',
@@ -18,9 +19,9 @@ const APP_SHELL = [
 ];
 
 const DATA_FILES = [
-  './data/foods-cn.min.json?v=20260426h',
-  './data/foods-global.part01.min.json?v=20260426h',
-  './data/foods-global.part02.min.json?v=20260426h',
+  './data/foods-cn.min.json?v=20260426i',
+  './data/foods-global.part01.min.json?v=20260426i',
+  './data/foods-global.part02.min.json?v=20260426i',
   './data/food-library-audit.json',
   './data/foods-regions.meta.json',
   './data/foods.meta.json'

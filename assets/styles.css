@@ -2873,7 +2873,7 @@ textarea {
 }
 
 
-/* v40: remove model overlay metrics that blocked nutrition rings */
+/* v41: remove model overlay metrics that blocked nutrition rings */
 .hero-telemetry,
 .telemetry-chip {
   display: none !important;
