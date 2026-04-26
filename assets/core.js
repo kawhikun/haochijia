@@ -12,11 +12,12 @@ import {
   clamp,
   NUTRIENT_DEFS,
   OCR_FIELD_MAP,
-} from './nutrition-refs.js?v=20260426d';
-import { createBodyModelController } from './model-scene.js?v=20260426d';
+} from './nutrition-refs.js?v=20260426f';
+import { buildSmartFoodLabels } from './food-label-upgrade.js?v=20260426f';
+import { createBodyModelController } from './model-scene.js?v=20260426f';
 
-const STORAGE_KEY = 'haochijia.core.v37.snapshot';
-const DB_NAME = 'haochijia-core-v37';
+const STORAGE_KEY = 'haochijia.core.v38.snapshot';
+const DB_NAME = 'haochijia-core-v38';
 const DB_STORE = 'kv';
 const IDB_SNAPSHOT_KEY = 'snapshot';
 const IDB_PHOTO_KEY = 'photoRef';
@@ -149,7 +150,7 @@ const DEFAULT_GITHUB = {
 
 const DOM = {};
 const state = {
-  version: 'v37',
+  version: 'v38',
   platform: detectPlatform(),
   profile: { ...defaultProfile(), bodyFat: 22, focusNote: '' },
   bodyHistory: [],
@@ -184,16 +185,16 @@ const state = {
   githubSyncTimer: null,
 };
 
-const V32_BUILD_VERSION = 'v37-comprehensive-strengthened';
-const V32_STORAGE_KEYS = [STORAGE_KEY, 'haochijia.core.v36.snapshot', 'haochijia.core.v34.snapshot', 'haochijia.core.v33.snapshot', 'haochijia.core.v32.snapshot', 'haochijia.core.v31.snapshot'];
-const V32_IDB_SNAPSHOT_KEYS = ['snapshot-v37', 'snapshot-v36', 'snapshot-v34', 'snapshot-v33', 'snapshot-v32', 'snapshot'];
-const V32_IDB_BACKUP_KEY = 'snapshot-history-v37';
+const V32_BUILD_VERSION = 'v38-human-panel-translation-intake-photo';
+const V32_STORAGE_KEYS = [STORAGE_KEY, 'haochijia.core.v37.snapshot', 'haochijia.core.v36.snapshot', 'haochijia.core.v34.snapshot', 'haochijia.core.v33.snapshot', 'haochijia.core.v32.snapshot', 'haochijia.core.v31.snapshot'];
+const V32_IDB_SNAPSHOT_KEYS = ['snapshot-v38', 'snapshot-v37', 'snapshot-v36', 'snapshot-v34', 'snapshot-v33', 'snapshot-v32', 'snapshot'];
+const V32_IDB_BACKUP_KEY = 'snapshot-history-v38';
 const LOCAL_BACKUP_LIMIT = 18;
 const FOOD_REGION_OPTIONS = new Set(['all', 'cn', 'intl']);
 const FOOD_NAME_MODE_OPTIONS = new Set(['zh', 'en', 'original']);
 const V32_FOOD_BANK_FILES = Object.freeze({
-  cn: ['./data/foods-cn.min.json?v=20260426d'],
-  intl: ['./data/foods-global.part01.min.json?v=20260426d', './data/foods-global.part02.min.json?v=20260426d'],
+  cn: ['./data/foods-cn.min.json?v=20260426f'],
+  intl: ['./data/foods-global.part01.min.json?v=20260426f', './data/foods-global.part02.min.json?v=20260426f'],
 });
 const FOOD_LIBRARY_AUDIT = Object.freeze({
   cn: { label: '中文库', file: 'foods-cn.min.json', rows: 36793, missingZh: 0, missingEn: 0, missingOriginal: 0, missingCode: 0 },
@@ -317,11 +318,11 @@ async function init() {
 
 function bindDom() {
   const ids = [
-    'appShell', 'platformBadge', 'menuBtn', 'heroStage', 'bodyCanvas', 'stagePhotoRef', 'focusModePill', 'focusModeText', 'ringOrbit',
+    'appShell', 'platformBadge', 'menuBtn', 'heroStage', 'bodyCanvas', 'stagePhotoRef', 'heroTelemetry', 'focusModePill', 'focusModeText', 'ringOrbit',
     'profileForm', 'bodyForm', 'bodyStatusHint', 'importBodyBtn', 'quickExportBtn', 'saveBodyBtn', 'photoShapeBtn', 'suggestionSummary', 'suggestionCards', 'featureAuditList',
     'bodyHistoryList', 'bodyHistoryMeta', 'foodSearchStatus', 'foodAuditStrip', 'foodSearchInput', 'foodAmountInput', 'foodSearchResults', 'customFoodForm', 'customFoodName', 'customFoodNameEn', 'customFoodCode', 'customFoodBrand', 'customFoodServing', 'saveCustomFoodBtn', 'clearCustomFoodFormBtn', 'customFoodList', 'captureInput',
-    'runBarcodeBtn', 'runOcrBtn', 'capturePreview', 'captureStatus', 'captureResult', 'captureFoodName', 'captureBasis', 'captureServingSize',
-    'captureServings', 'captureNutrients', 'addCaptureFoodBtn', 'saveCaptureFoodBtn', 'progressList', 'dayTotalBadge', 'logList', 'clearDayBtn',
+    'runBarcodeBtn', 'runOcrBtn', 'runSmartCaptureBtn', 'capturePreview', 'captureStatus', 'captureResult', 'captureFoodName', 'captureBasis', 'captureServingSize',
+    'captureServings', 'captureNutrients', 'addCaptureFoodBtn', 'saveCaptureFoodBtn', 'progressList', 'dayTotalBadge', 'activeDateInput', 'prevDayBtn', 'nextDayBtn', 'todayBtn', 'quickWaterBtn', 'logList', 'clearDayBtn',
     'photoDialog', 'photoInput', 'photoPreview', 'photoAutoBtn', 'photoShapeMeta', 'shapeShoulder', 'shapeChest', 'shapeWaist', 'shapeHip', 'shapeArm', 'shapeLeg', 'photoResetBtn', 'photoApplyBtn',
     'dataDialog', 'persistStatus', 'localBackupMeta', 'restoreLocalBtn', 'importAllBtn', 'exportAllBtn', 'bodyJsonBtn', 'bodyCsvBtn', 'intakeCsvBtn', 'persistBtn', 'githubStatus', 'ghOwner', 'ghRepo', 'ghBranch',
     'ghPath', 'ghToken', 'ghAutoSync', 'ghRestoreBtn', 'ghSyncBtn', 'importInput', 'foodRegionGroup', 'foodLanguageGroup'
@@ -393,12 +394,18 @@ function bindEvents() {
   DOM.captureInput.addEventListener('change', updateCapturePreview);
   DOM.runBarcodeBtn.addEventListener('click', runBarcodeSearch);
   DOM.runOcrBtn.addEventListener('click', runOcrSearch);
+  DOM.runSmartCaptureBtn?.addEventListener('click', runSmartCapture);
   DOM.captureBasis.addEventListener('change', renderCaptureResult);
   DOM.addCaptureFoodBtn.addEventListener('click', addCaptureFoodToToday);
   DOM.saveCaptureFoodBtn.addEventListener('click', saveCaptureFoodToLibrary);
 
   DOM.logList.addEventListener('click', onLogListClick);
   DOM.bodyHistoryList.addEventListener('click', onBodyHistoryClick);
+  DOM.activeDateInput?.addEventListener('change', () => setActiveDate(DOM.activeDateInput.value));
+  DOM.prevDayBtn?.addEventListener('click', () => shiftActiveDate(-1));
+  DOM.nextDayBtn?.addEventListener('click', () => shiftActiveDate(1));
+  DOM.todayBtn?.addEventListener('click', () => setActiveDate(todayString()));
+  DOM.quickWaterBtn?.addEventListener('click', () => addWaterToToday(250));
   DOM.clearDayBtn.addEventListener('click', clearTodayLog);
 
   DOM.photoInput.addEventListener('change', onPhotoSelected);
@@ -683,12 +690,14 @@ function renderAll() {
   recomputeState();
   renderHeroMeta();
   renderHeroRings();
+  renderHeroTelemetry();
   renderSuggestions();
   renderFeatureAudit();
   renderBodyHistory();
   renderFoodAuditStrip();
   renderCustomFoodList();
   renderFoodSearchResults();
+  renderDailyToolbar();
   renderProgressList();
   renderLogList();
   renderCaptureResult();
@@ -860,7 +869,7 @@ function scheduleSoftRefresh() {
     persistState({ syncEligible: false });
     renderAll();
     window.requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: 'auto' }));
-  }, 110);
+  }, 55);
 }
 
 function renderHeroMeta() {
@@ -869,6 +878,28 @@ function renderHeroMeta() {
   DOM.focusModeText.textContent = `${nutrientDisplayName(state.activeRing)} 高亮 · 数据实时联动 · 拖旋 / 缩放 / 双击回正`;
 }
 
+
+
+function renderHeroTelemetry() {
+  if (!DOM.heroTelemetry || !state.calc?.targets) return;
+  const current = buildModelRecord();
+  const heightM = Number(current.heightCm || 0) / 100;
+  const bmi = heightM > 0 && Number.isFinite(current.weightKg) ? current.weightKg / (heightM * heightM) : null;
+  const kcalTarget = targetValue(state.calc.targets.kcal);
+  const proteinTarget = targetValue(state.calc.targets.protein);
+  const waistHip = Number.isFinite(current.waist) && Number.isFinite(current.hip) && current.hip > 0 ? current.waist / current.hip : null;
+  const proteinNow = Number(state.totals.protein || 0);
+  const waterNow = Number(state.totals.water || 0);
+  const chips = [
+    { label: '体重', value: Number.isFinite(current.weightKg) ? formatNumber(current.weightKg, 'kg', 1) : '待填' },
+    { label: 'BMI', value: bmi ? formatNumber(bmi, '', 1) : '待填' },
+    { label: '腰臀比', value: waistHip ? formatNumber(waistHip, '', 2) : '待填' },
+    { label: '目标热量', value: kcalTarget ? formatCompactNutrient('kcal', kcalTarget) : '待算' },
+    { label: '蛋白', value: formatCompactNutrient('protein', proteinNow) + ' / ' + formatCompactNutrient('protein', proteinTarget) },
+    { label: '水分', value: formatCompactNutrient('water', waterNow) },
+  ];
+  DOM.heroTelemetry.innerHTML = chips.map((item) => '<span class="telemetry-chip"><b>' + escapeHtml(item.label) + '</b><em>' + escapeHtml(item.value) + '</em></span>').join('');
+}
 
 function buildHeroRingData() {
   const targets = state.calc.targets;
@@ -910,13 +941,16 @@ function renderHeroRings() {
     button.dataset.ringId = ring.id;
     button.style.left = `${point.x}px`;
     button.style.top = `${point.y}px`;
-    button.style.transform = 'translate(-50%, -50%)';
+    button.style.transform = 'translate(-50%, -50%) scale(var(--ring-scale, 1))';
     button.style.width = `${size}px`;
     button.style.height = `${size}px`;
     button.style.setProperty('--ring-color', ring.color);
     button.style.setProperty('--ring-pct', `${Math.max(0, Math.min(100, ring.percent))}%`);
-    button.style.setProperty('--float-delay', `${index * -1.4}s`);
-    button.style.setProperty('--float-duration', `${10 + (index % 3) * 2}s`);
+    button.style.setProperty('--float-delay', `${index * -2.1}s`);
+    button.style.setProperty('--float-duration', `${18 + (index % 3) * 3}s`);
+    button.style.setProperty('--ring-scale', active ? '1.12' : ring.focus ? '1.06' : '1');
+    button.style.setProperty('--orbit-x', `${index % 2 === 0 ? 6 : -6}px`);
+    button.style.setProperty('--orbit-y', `${index < 3 ? -5 : 5}px`);
     button.innerHTML = `
       <span class="ring-inner">
         <span>
@@ -951,16 +985,18 @@ function buildRingData() {
 
 function renderSuggestions() {
   const cards = buildSuggestionCards();
-  DOM.suggestionSummary.textContent = `${state.focusMode.label} · 科学建议 ${cards.length} 条`;
-  const cardsHtml = cards.map((card) => `
-    <article class="suggestion-card">
-      <strong>${escapeHtml(card.title)}</strong>
-      <div class="history-meta">${escapeHtml(card.subtitle)}</div>
-      <div class="suggestion-foods">${escapeHtml(card.foods.join(' · '))}</div>
-    </article>
-  `).join('');
+  DOM.suggestionSummary.textContent = state.focusMode.label + ' · 科学建议 ' + cards.length + ' 条 · 基于今日记录实时更新';
+  const cardsHtml = cards.map((card) =>
+    '<article class="suggestion-card ' + escapeHtml(card.priorityClass || '') + '">' +
+      '<strong>' + escapeHtml(card.title) + '</strong>' +
+      '<div class="history-meta">' + escapeHtml(card.subtitle) + '</div>' +
+      '<div class="suggestion-action"><span>行动</span>' + escapeHtml(card.action) + '</div>' +
+      '<div class="suggestion-basis">' + escapeHtml(card.basis) + '</div>' +
+      '<div class="suggestion-foods">' + escapeHtml(card.foods.join(' · ')) + '</div>' +
+    '</article>'
+  ).join('');
   const adviceHtml = renderAdviceBasisPanel();
-  DOM.suggestionCards.innerHTML = cardsHtml || adviceHtml ? `${cardsHtml}${adviceHtml}` : '<div class="empty-state">暂无建议</div>';
+  DOM.suggestionCards.innerHTML = cardsHtml || adviceHtml ? cardsHtml + adviceHtml : '<div class="empty-state">暂无建议</div>';
 }
 
 function renderAdviceBasisPanel() {
@@ -986,38 +1022,55 @@ function buildSuggestionCards() {
   const cards = ids.map((id) => {
     const target = state.calc.targets[id];
     const current = Number(state.totals[id] || 0);
+    const goal = targetValue(target);
     const progress = progressForTarget(target, current);
-    const deficit = target.type === 'max'
-      ? Math.max(0, current - targetValue(target))
-      : Math.max(0, targetValue(target) - current);
+    const deficit = target.type === 'max' ? Math.max(0, current - goal) : Math.max(0, goal - current);
     const relevance = target.type === 'max'
-      ? (progress > 1 ? 100 + progress * 20 : progress * 10)
-      : ((1 - Math.min(progress, 1.4)) * 100 + (state.focusMode.nutrientIds.includes(id) ? 12 : 0));
+      ? (progress > 1 ? 130 + progress * 24 : Math.max(0, progress - 0.75) * 42)
+      : ((1 - Math.min(progress, 1.35)) * 100 + (state.focusMode.nutrientIds.includes(id) ? 16 : 0));
     const hintFoods = NUTRIENT_HINTS[id] || ['优先真实食物', '分次摄入', '连续记录'];
-    let title = `${nutrientDisplayName(id)} ${Math.round(progress * 100)}%`;
-    let subtitle = `目标 ${formatCompactNutrient(id, targetValue(target))}`;
+    const percent = Math.round(progress * 100);
+    const title = nutrientDisplayName(id) + ' ' + percent + '%';
+    let subtitle = '目标 ' + formatCompactNutrient(id, goal) + ' · 已摄入 ' + formatCompactNutrient(id, current);
+    let action = '保持记录，下一餐按缺口微调。';
+    let priorityClass = 'priority-watch';
     if (target.type === 'max') {
-      subtitle = progress > 1
-        ? `当前偏高，约多出 ${formatCompactNutrient(id, deficit)}，建议今天后半段尽量少盐少酱料。`
-        : `当前控制良好，继续维持在上限 ${formatCompactNutrient(id, targetValue(target))} 内。`;
+      if (progress > 1) {
+        priorityClass = 'priority-high';
+        subtitle = '当前偏高，约多出 ' + formatCompactNutrient(id, deficit) + '。';
+        action = (id === 'sodium' || id === 'satFat') ? '后续餐次选择少盐少酱、少油炸加工食品。' : '后续餐次降低高负荷来源，优先清淡搭配。';
+      } else {
+        priorityClass = progress > 0.85 ? 'priority-watch' : 'priority-ok';
+        subtitle = '当前在上限 ' + formatCompactNutrient(id, goal) + ' 内。';
+        action = '继续维持，避免单餐集中摄入。';
+      }
     } else if (progress < 0.55) {
-      subtitle = `明显不足，建议再补约 ${formatCompactNutrient(id, deficit)}；优先从正餐和加餐分次补足。`;
+      priorityClass = 'priority-high';
+      subtitle = '明显不足，约差 ' + formatCompactNutrient(id, deficit) + '。';
+      action = '优先用正餐补一部分，再用加餐补剩余，不建议靠单一食物猛补。';
     } else if (progress < 0.95) {
-      subtitle = `接近目标，还差 ${formatCompactNutrient(id, deficit)}；今天仍可小幅补齐。`;
+      priorityClass = 'priority-watch';
+      subtitle = '接近目标，还差 ' + formatCompactNutrient(id, deficit) + '。';
+      action = '下一餐小幅补齐，兼顾蛋白、纤维和水分。';
     } else if (progress <= 1.2) {
-      subtitle = '已基本达标，继续保持稳定摄入与均匀分配。';
+      priorityClass = 'priority-ok';
+      subtitle = '已基本达标。';
+      action = '今天后续保持均衡，避免过量叠加。';
     } else {
-      subtitle = '已超过建议值，后续餐次可适当转向更清淡、更均衡。';
+      priorityClass = 'priority-watch';
+      subtitle = '已明显超过建议值。';
+      action = '后续餐次转向清淡、低负荷、含蔬菜的组合。';
     }
-    if (id === 'protein') subtitle += ' 蛋白质尽量分配到 3–4 餐更利于利用。';
-    if (id === 'fiber') subtitle += ' 纤维补充时记得同步饮水。';
-    if (id === 'water') subtitle += ' 饮水建议分时段完成，不必集中猛喝。';
-    return { id, relevance, title, subtitle, foods: hintFoods };
-  }).sort((a, b) => b.relevance - a.relevance).slice(0, 5);
+    if (id === 'protein') action += ' 蛋白质尽量分配到 3-4 餐。';
+    if (id === 'fiber') action += ' 纤维增加时同步饮水，避免肠胃不适。';
+    if (id === 'water') action += ' 分时段小口补水，不需要集中猛喝。';
+    const basis = target.type === 'range'
+      ? '依据：年龄、性别、生理状态、活动量与目标计算；推荐区间 ' + formatCompactNutrient(id, Number(target.min || 0)) + '-' + formatCompactNutrient(id, Number(target.max || goal)) + '，当前按优先目标 ' + formatCompactNutrient(id, goal) + ' 评估。'
+      : '依据：个人资料与今日已记录摄入；' + (target.type === 'max' ? '按上限控制' : '按推荐目标补足') + '，每次输入都会重算。';
+    return { id, relevance, title, subtitle, action, basis, foods: hintFoods, priorityClass };
+  }).sort((a, b) => b.relevance - a.relevance).slice(0, 6);
   return cards;
 }
-
-function renderBodyHistory() {
 
 function renderBodyHistory() {
   DOM.bodyHistoryMeta.textContent = `${state.bodyHistory.length} 条`;
@@ -1274,17 +1327,39 @@ function renderProgressList() {
 }
 
 function logItemDisplayName(item) {
-
-function logItemDisplayName(item) {
   return foodDisplayNameForMode(item, state.foodNameMode);
 }
 
 
 
+function renderDailyToolbar() {
+  if (DOM.activeDateInput) DOM.activeDateInput.value = state.activeDate;
+  if (DOM.todayBtn) DOM.todayBtn.classList.toggle('is-active', state.activeDate === todayString());
+}
+
+function daySummaryForItems(items) {
+  const totals = items.reduce((acc, item) => mergeTotals(acc, item.nutrients || {}), createEmptyTotals());
+  const yesterday = offsetDateString(state.activeDate, -1);
+  const yesterdayKcal = Number(computeTotalsForDate(yesterday)?.kcal || 0);
+  const kcal = Number(totals.kcal || 0);
+  const delta = yesterdayKcal ? kcal - yesterdayKcal : 0;
+  return { totals, kcal, delta, count: items.length };
+}
+
 function renderLogList() {
   const items = getDayLog(state.activeDate).items;
+  const summary = daySummaryForItems(items);
+  const deltaText = summary.delta ? (summary.delta > 0 ? '+' : '') + Math.round(summary.delta) : '—';
+  const summaryHtml =
+    '<div class="daily-summary-grid">' +
+      '<span><b>' + summary.count + '</b><em>记录条目</em></span>' +
+      '<span><b>' + escapeHtml(formatCompactNutrient('kcal', summary.kcal)) + '</b><em>总热量</em></span>' +
+      '<span><b>' + escapeHtml(formatCompactNutrient('protein', summary.totals.protein || 0)) + '</b><em>蛋白质</em></span>' +
+      '<span><b>' + escapeHtml(formatCompactNutrient('water', summary.totals.water || 0)) + '</b><em>水分</em></span>' +
+      '<span><b>' + escapeHtml(deltaText) + '</b><em>较前日 kcal</em></span>' +
+    '</div>';
   if (!items.length) {
-    DOM.logList.innerHTML = '<div class="empty-state">今天还没有记录</div>';
+    DOM.logList.innerHTML = summaryHtml + '<div class="empty-state">这一天还没有记录，可搜索食品、拍营养表或一键加水。</div>';
     return;
   }
   const groups = {};
@@ -1294,33 +1369,32 @@ function renderLogList() {
     groups[bucket.key].items.push({ ...item, _index: index });
     groups[bucket.key].kcal += Number(item.nutrients?.kcal || 0);
   });
-  DOM.logList.innerHTML = MEAL_BUCKETS.filter((bucket) => groups[bucket.key]?.items?.length).map((bucket) => {
+  const groupsHtml = MEAL_BUCKETS.filter((bucket) => groups[bucket.key]?.items?.length).map((bucket) => {
     const group = groups[bucket.key];
-    return `
-      <section class="log-bucket">
-        <div class="log-bucket-head">
-          <strong>${escapeHtml(group.label)}</strong>
-          <span class="history-meta">${group.items.length} 条 · ${escapeHtml(formatCompactNutrient('kcal', group.kcal || 0))}</span>
-        </div>
-        ${group.items.map((item) => {
-          const secondary = foodSecondaryName(item);
-          return `
-            <article class="log-item">
-              <strong>${escapeHtml(logItemDisplayName(item))}</strong>
-              ${secondary ? `<div class="history-meta">${escapeHtml(secondary)}</div>` : ''}
-              <div class="log-meta">${escapeHtml(formatTime(item.createdAt))}${item.grams ? ` · ${item.grams}g` : ''} · ${escapeHtml(formatCompactNutrient('kcal', item.nutrients.kcal || 0))}</div>
-              <div class="log-actions">
-                <button type="button" class="ghost-btn tiny-btn" data-remove-log-index="${item._index}">删除</button>
-              </div>
-            </article>`;
-        }).join('')}
-      </section>`;
+    const itemsHtml = group.items.map((item) => {
+      const secondary = foodSecondaryName(item);
+      const chips = ['protein', 'carbs', 'fat', 'fiber']
+        .filter((id) => Number(item.nutrients?.[id] || 0) > 0)
+        .map((id) => '<span>' + escapeHtml(nutrientDisplayName(id)) + ' ' + escapeHtml(formatCompactNutrient(id, item.nutrients[id])) + '</span>')
+        .join('');
+      return '<article class="log-item">' +
+        '<strong>' + escapeHtml(logItemDisplayName(item)) + '</strong>' +
+        (secondary ? '<div class="history-meta">' + escapeHtml(secondary) + '</div>' : '') +
+        '<div class="log-meta">' + escapeHtml(formatTime(item.createdAt)) + (item.grams ? ' · ' + item.grams + 'g' : '') + ' · ' + escapeHtml(formatCompactNutrient('kcal', item.nutrients?.kcal || 0)) + '</div>' +
+        (chips ? '<div class="log-nutrient-chips">' + chips + '</div>' : '') +
+        '<div class="log-actions">' +
+          '<button type="button" class="ghost-btn tiny-btn" data-duplicate-log-index="' + item._index + '">再记一份</button>' +
+          '<button type="button" class="ghost-btn tiny-btn" data-remove-log-index="' + item._index + '">删除</button>' +
+        '</div>' +
+      '</article>';
+    }).join('');
+    return '<section class="log-bucket">' +
+      '<div class="log-bucket-head"><strong>' + escapeHtml(group.label) + '</strong><span class="history-meta">' + group.items.length + ' 条 · ' + escapeHtml(formatCompactNutrient('kcal', group.kcal || 0)) + '</span></div>' +
+      itemsHtml +
+    '</section>';
   }).join('');
+  DOM.logList.innerHTML = summaryHtml + groupsHtml;
 }
-
-
-function renderCaptureResult() {
-
 
 function renderCaptureResult() {
   if (!state.captureParsed) {
@@ -1329,16 +1403,17 @@ function renderCaptureResult() {
     return;
   }
   DOM.captureResult.hidden = false;
-  DOM.captureFoodName.value = state.captureParsed.name || DOM.captureFoodName.value || '拍照识别食品';
-  DOM.captureBasis.value = state.captureParsed.basis || '100g';
-  DOM.captureServingSize.value = Number.isFinite(state.captureParsed.servingSize) ? state.captureParsed.servingSize : '';
-  DOM.captureServings.value = DOM.captureServings.value || '1';
-  const nutrientIds = Object.keys(state.captureParsed.nutrients || {}).slice(0, 12);
-  DOM.captureNutrients.innerHTML = nutrientIds.map((id) => `
-    <span class="nutrient-pill"><strong>${escapeHtml(nutrientDisplayName(id))}</strong><span>${escapeHtml(formatCompactNutrient(id, state.captureParsed.nutrients[id]))}</span></span>
-  `).join('');
+  if (document.activeElement !== DOM.captureFoodName) DOM.captureFoodName.value = state.captureParsed.name || DOM.captureFoodName.value || '拍照识别食品';
+  if (document.activeElement !== DOM.captureBasis) DOM.captureBasis.value = state.captureParsed.basis || '100g';
+  if (document.activeElement !== DOM.captureServingSize) DOM.captureServingSize.value = Number.isFinite(state.captureParsed.servingSize) ? state.captureParsed.servingSize : '';
+  if (!DOM.captureServings.value) DOM.captureServings.value = '1';
+  const nutrientIds = Object.keys(state.captureParsed.nutrients || {}).slice(0, 14);
+  const sourceLabel = state.captureParsed.recognition === 'barcode-library' ? '条码命中食品库' : state.captureParsed.recognition === 'barcode-only' ? '识别到条码，需补营养' : '多通道 OCR 解析';
+  const confidence = Math.round(Number(state.captureParsed.confidence || 0.55) * 100);
+  const metaHtml = '<div class="capture-quality"><span>' + escapeHtml(sourceLabel) + '</span><span>可信度 ' + confidence + '%</span><span>' + nutrientIds.length + ' 项营养字段</span></div>';
+  const nutrientsHtml = nutrientIds.map((id) => '<span class="nutrient-pill"><strong>' + escapeHtml(nutrientDisplayName(id)) + '</strong><span>' + escapeHtml(formatCompactNutrient(id, state.captureParsed.nutrients[id])) + '</span></span>').join('');
+  DOM.captureNutrients.innerHTML = metaHtml + (nutrientsHtml || '<span class="history-meta">未识别出营养数值，可手动保存名称后补充。</span>');
 }
-
 
 function renderPhotoRef() {
   if (state.photoRefUrl) {
@@ -1370,10 +1445,12 @@ function onProfileInput() {
     bodyFat: clamp(Number(DOM.profileForm.bodyFat.value) || 22, 2, 60),
     focusNote: String(DOM.profileForm.focusNote.value || '').trim().slice(0, 120),
   };
+  if (DOM.bodyStatusHint) DOM.bodyStatusHint.textContent = '用户状态已实时联动模型、营养目标与建议';
   scheduleSoftRefresh();
 }
 
 function onBodyInput() {
+  if (DOM.bodyStatusHint) DOM.bodyStatusHint.textContent = '身体维度已实时联动 3D 模型';
   scheduleSoftRefresh();
 }
 
@@ -1534,6 +1611,19 @@ function foodNutrientsForAmount(food, grams) {
 }
 
 function onLogListClick(event) {
+  const duplicateBtn = event.target.closest('[data-duplicate-log-index]');
+  if (duplicateBtn) {
+    const idx = Number(duplicateBtn.dataset.duplicateLogIndex);
+    const items = getDayLog(state.activeDate).items;
+    const source = items[idx];
+    if (source) {
+      items.unshift({ ...source, id: uid('log'), createdAt: new Date().toISOString(), duplicatedFrom: source.id || '' });
+      getDayLog(state.activeDate).items = items.slice(0, MAX_LOG_ITEMS_PER_DAY);
+      persistState({ syncEligible: true });
+      renderAll();
+    }
+    return;
+  }
   const removeBtn = event.target.closest('[data-remove-log-index]');
   if (!removeBtn) return;
   const idx = Number(removeBtn.dataset.removeLogIndex);
@@ -1575,6 +1665,44 @@ function saveBodyRecord() {
 
 function clearTodayLog() {
   getDayLog(state.activeDate).items = [];
+  persistState({ syncEligible: true });
+  renderAll();
+}
+
+
+function setActiveDate(value) {
+  const next = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) return;
+  state.activeDate = next;
+  renderAll();
+  persistState({ syncEligible: false });
+}
+
+function shiftActiveDate(delta) {
+  setActiveDate(offsetDateString(state.activeDate, Number(delta) || 0));
+}
+
+function offsetDateString(value, deltaDays) {
+  const date = new Date(String(value || todayString()) + 'T00:00:00');
+  if (Number.isNaN(date.getTime())) return todayString();
+  date.setDate(date.getDate() + Number(deltaDays || 0));
+  return date.toISOString().slice(0, 10);
+}
+
+function addWaterToToday(ml = 250) {
+  const amount = clamp(Number(ml) || 250, 50, 2000);
+  const nutrients = createEmptyTotals();
+  nutrients.water = amount;
+  getDayLog(state.activeDate).items.unshift({
+    id: uid('log'),
+    createdAt: new Date().toISOString(),
+    label: '饮水 ' + Math.round(amount) + 'mL',
+    labels: { zh: '饮水 ' + Math.round(amount) + 'mL', en: 'Water', original: 'Water' },
+    grams: null,
+    nutrients,
+    source: 'quick-water',
+  });
+  getDayLog(state.activeDate).items = getDayLog(state.activeDate).items.slice(0, MAX_LOG_ITEMS_PER_DAY);
   persistState({ syncEligible: true });
   renderAll();
 }
@@ -1798,6 +1926,8 @@ async function runBarcodeSearch() {
         nutrients: nutrientsForFood(hit),
         code,
         sourceFood: hit,
+        recognition: 'barcode-library',
+        confidence: 0.94,
       };
       renderCaptureResult();
     } else {
@@ -1807,6 +1937,8 @@ async function runBarcodeSearch() {
         servingSize: '',
         nutrients: {},
         code,
+        recognition: 'barcode-only',
+        confidence: 0.42,
       };
       renderCaptureResult();
     }
@@ -1815,6 +1947,22 @@ async function runBarcodeSearch() {
   }
 }
 
+
+async function runSmartCapture() {
+  const file = DOM.captureInput.files?.[0];
+  if (!file) {
+    DOM.captureStatus.textContent = '请先选择图片';
+    return;
+  }
+  DOM.captureStatus.textContent = '智能识别：先查条码，再跑增强 OCR…';
+  await runBarcodeSearch();
+  const nutrientCount = Object.keys(state.captureParsed?.nutrients || {}).length;
+  if (nutrientCount > 0) {
+    DOM.captureStatus.textContent = '智能识别完成：食品库命中 ' + nutrientCount + ' 项营养';
+    return;
+  }
+  await runOcrSearch();
+}
 
 async function runOcrSearch() {
   const file = DOM.captureInput.files?.[0];
@@ -1846,6 +1994,8 @@ async function runOcrSearch() {
       basis: merged.basis || '100g',
       servingSize: merged.servingSize || '',
       nutrients: merged.nutrients || {},
+      recognition: 'ocr-multipass',
+      confidence: Math.min(0.92, 0.52 + Object.keys(merged.nutrients || {}).length * 0.045),
     };
     DOM.captureStatus.textContent = `增强 OCR 完成：识别到 ${Object.keys(merged.nutrients || {}).length} 项营养`;
     renderCaptureResult();
@@ -1853,9 +2003,6 @@ async function runOcrSearch() {
     DOM.captureStatus.textContent = `OCR 失败：${error.message}`;
   }
 }
-
-
-function addCaptureFoodToToday() {
 
 
 function addCaptureFoodToToday() {
@@ -1972,9 +2119,6 @@ function renderPhotoPreviewMeta() {
     ? `6 维塑形实时预览 · 肩 ${values.shoulder}% · 胸 ${values.chest}% · 腰 ${values.waist}% · 臀 ${values.hip}% · 臂 ${values.arm}% · 腿 ${values.leg}%`
     : '上传正面全身照后会先自动估测，再保留 6 维手动微调。';
 }
-
-
-function resetPhotoShape() {
 
 
 function resetPhotoShape() {
@@ -2428,14 +2572,14 @@ function translateFoodNameToZh(input) {
     .replace(/[®™]/g, '')
     .replace(/[()\[\]{}]/g, ' ')
     .replace(/[,:;|/+_-]+/g, ' ')
-    .replace(/(oz|ounce|ounces|lb|lbs)/gi, ' ')
+    .replace(/\b(oz|ounce|ounces|lb|lbs|g|kg|ml|l)\b/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
   if (!text) return '';
   const phrases = [...FOOD_TRANSLATION_PHRASES].sort((a, b) => b[0].length - a[0].length);
   phrases.forEach(([en, zh]) => {
-    text = text.replace(new RegExp(`\b${en.replace(/[-/\^$*+?.()|[\]{}]/g, '\$&')}\b`, 'gi'), ` ${zh} `);
+    text = text.replace(new RegExp('\\b' + escapeReg(en) + '\\b', 'gi'), ' ' + zh + ' ');
   });
   const tokens = text.split(/\s+/).filter(Boolean);
   const out = [];
@@ -2443,7 +2587,7 @@ function translateFoodNameToZh(input) {
     if (!token || FOOD_TRANSLATION_STOPWORDS.has(token)) return;
     if (hasChinese(token)) { out.push(token); return; }
     if (/^\d+(\.\d+)?$/.test(token)) { out.push(token); return; }
-    const mapped = FOOD_TRANSLATION_TOKENS[token];
+    const mapped = FOOD_TRANSLATION_TOKENS[token] || FOOD_TRANSLATION_TOKENS[token.replace(/s$/, '')];
     if (mapped) { out.push(mapped); return; }
     if (token.length <= 2) return;
     out.push(token.replace(/^[a-z]/, (m) => m.toUpperCase()));
@@ -2455,8 +2599,71 @@ function translateFoodNameToZh(input) {
     deduped.push(part);
   });
   const zhOnly = deduped.filter((part) => hasChinese(part)).join('');
-  const residual = deduped.filter((part) => !hasChinese(part)).join(' ');
+  const residual = deduped.filter((part) => !hasChinese(part)).slice(0, 4).join(' ');
   return [zhOnly, residual].filter(Boolean).join(' · ').trim();
+}
+
+function cleanupFoodLabelText(value) {
+  return String(value || '')
+    .replace(/&quot;/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/([\u4e00-\u9fff])\s+([\u4e00-\u9fff])/g, '$1$2')
+    .replace(/^[,.;:：、\s]+|[,.;:：、\s]+$/g, '')
+    .trim();
+}
+
+function readableLatinFallback(value) {
+  const clean = String(value || '').replace(/[^0-9A-Za-z &'.-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return clean.split(' ').slice(0, 5).join(' ');
+}
+
+function normalizeLatinFoodText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^0-9a-z\u4e00-\u9fff]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function refineChineseFoodLabel(label, original = '', en = '') {
+  const raw = normalizeLatinFoodText([original, en, label].join(' '));
+  let value = cleanupFoodLabelText(label);
+  if (/halls\s+extra\s+strong/.test(raw)) return 'HALLS 特强薄荷糖';
+  if (/ovomaltine/.test(raw)) return '阿华田麦芽饮品';
+  if (/chocolat\s+noir/.test(raw) || /dark\s+chocolate/.test(raw)) return /pepites|chips|chip/.test(raw) ? '黑巧克力碎片' : '黑巧克力';
+  if (/blueberry\s+muffins?/.test(raw)) return '蓝莓松饼';
+  if (/greek\s+yogurt/.test(raw)) return '希腊酸奶';
+  if (/plain\s+yogurt/.test(raw)) return '原味酸奶';
+  if (/peanut\s+butter/.test(raw)) return '花生酱';
+  if (/almond\s+milk/.test(raw)) return '杏仁奶';
+  if (/oat\s+milk/.test(raw)) return '燕麦奶';
+  if (/coconut\s+milk/.test(raw)) return '椰奶';
+  if (/protein\s+bar/.test(raw)) return '蛋白棒';
+  if (/energy\s+bar/.test(raw)) return '能量棒';
+  if (/granola/.test(raw)) return '格兰诺拉麦片';
+  if (/muesli/.test(raw)) return '混合麦片';
+  if (/bagel/.test(raw)) return /bites?/.test(raw) ? '迷你贝果' : '贝果';
+  if (/le\s+paris/.test(raw) && /fleury\s+michon/.test(raw)) return '巴黎风味熟火腿';
+  value = value
+    .replace(/巧克力黑/g, '黑巧克力')
+    .replace(/奶酪蓝/g, '蓝纹奶酪')
+    .replace(/酸奶希腊/g, '希腊酸奶')
+    .replace(/牛奶全脂/g, '全脂牛奶')
+    .replace(/牛奶低脂/g, '低脂牛奶')
+    .replace(/面包白/g, '白面包')
+    .replace(/面包全麦/g, '全麦面包');
+  return value;
+}
+
+function ensureChineseFoodLabel(label, original = '', en = '') {
+  let value = refineChineseFoodLabel(cleanupFoodLabelText(label), original, en);
+  if (hasChinese(value)) return value;
+  value = refineChineseFoodLabel(cleanupFoodLabelText(translateFoodNameToZh(original || en || value)), original, en);
+  if (hasChinese(value)) return value;
+  const latin = readableLatinFallback(original || en || label);
+  return latin ? '进口食品 · ' + latin : '未命名食品';
 }
 
 function chooseBestChineseLabel(rawZh, original, en) {
@@ -2509,8 +2716,7 @@ function scoreParsedNutrition(parsed, rawText = '') {
 }
 
 function extractNameFromNutritionText(raw) {
-  const lines = String(raw || '').split(/
-+/).map((line) => line.trim()).filter(Boolean);
+  const lines = String(raw || '').split(/\n+/).map((line) => line.trim()).filter(Boolean);
   const blocked = /(nutrition|营养|项目|参考值|每100|每份|serving|energy|protein|fat|carb|sugar|fiber|sodium|table|facts|nrv|每\s*100|配料|ingredients)/i;
   const candidate = lines.find((line) => !blocked.test(line) && line.length >= 2 && line.length <= 48 && !/[0-9]{2,}/.test(line));
   return candidate ? candidate.replace(/[：:]+$/, '').trim() : '';
@@ -2520,14 +2726,25 @@ function normalizeFoodLabels(raw) {
   const source = raw?.labels ? raw.labels : raw || {};
   const name = String(raw?.name || raw?.label || raw?.z || raw?.n || '').trim();
   const original = String(source.original || raw?.n || raw?.name || raw?.label || name || '').trim();
-  const explicitEn = String(source.en || '').trim();
+  const explicitEn = String(source.en || raw?.en || '').trim();
   const en = explicitEn || (/[A-Za-z]/.test(original) ? original : (/[A-Za-z]/.test(name) ? name : ''));
   const storedZh = String(source.zh || raw?.z || '').trim();
-  const zh = chooseBestChineseLabel(storedZh || name, original, en);
+  const base = {
+    zh: chooseBestChineseLabel(storedZh || name, original, en),
+    en: en || original || name || '',
+    original: original || name || en || '',
+  };
+  let smart = base;
+  try {
+    smart = buildSmartFoodLabels(raw || {}, () => base) || base;
+  } catch (error) {
+    smart = base;
+  }
+  const zh = ensureChineseFoodLabel(smart.zh || base.zh, smart.original || base.original, smart.en || base.en);
   return {
-    zh: zh || original || en || name || '未命名食品',
-    en: en || original || zh || name || 'Unnamed food',
-    original: original || zh || en || name || 'Unnamed food',
+    zh,
+    en: String(smart.en || base.en || smart.original || base.original || zh || 'Unnamed food').trim(),
+    original: String(smart.original || base.original || base.en || zh || 'Unnamed food').trim(),
   };
 }
 
@@ -3083,8 +3300,7 @@ function loadScript(src) {
 function parseNutritionText(text) {
   const raw = String(text || '');
   if (!raw.trim()) return null;
-  const lines = raw.split(/
-+/).map((line) => line.trim()).filter(Boolean);
+  const lines = raw.split(/\n+/).map((line) => line.trim()).filter(Boolean);
   const clean = raw
     .replace(/[，、；：]/g, ' ')
     .replace(/\s+/g, ' ')
@@ -3140,8 +3356,6 @@ function parseNutritionText(text) {
     name: extractNameFromNutritionText(raw),
   };
 }
-
-function buildOcrKeywords(id, label) {
 
 function buildOcrKeywords(id, label) {
   const base = [String(label || '').toLowerCase()];

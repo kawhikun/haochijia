@@ -551,6 +551,40 @@ function addLimbSet(THREE, group, dims, ghost, sideKey, upperArmMat, forearmMat,
   group.add(foot);
 }
 
+
+function addAnatomicalGuideRings(THREE, group, dims, ghost = false) {
+  if (!dims?.torsoRings?.length) return;
+  const guideMaterial = new THREE.MeshBasicMaterial({
+    color: ghost ? 0xb9c8e7 : 0xffffff,
+    transparent: true,
+    opacity: ghost ? 0.08 : 0.24,
+    depthWrite: false,
+  });
+  const specs = [
+    { ring: dims.torsoRings[3], tube: 0.0042, opacity: 0.23 },
+    { ring: dims.torsoRings[5], tube: 0.0038, opacity: 0.2 },
+    { ring: dims.torsoRings[7], tube: 0.004, opacity: 0.22 },
+  ];
+  specs.forEach((spec, index) => {
+    if (!spec.ring) return;
+    const material = guideMaterial.clone();
+    material.opacity = ghost ? 0.065 : spec.opacity;
+    const mesh = new THREE.Mesh(new THREE.TorusGeometry(1, spec.tube, 8, 96), material);
+    mesh.scale.set(spec.ring.x * (index === 1 ? 1.08 : 1.04), spec.ring.z * (index === 1 ? 1.1 : 1.04), 1);
+    mesh.rotation.x = Math.PI / 2;
+    mesh.position.set(0, spec.ring.y, 0.012 + index * 0.004);
+    mesh.renderOrder = 4;
+    group.add(mesh);
+  });
+  const centerMat = guideMaterial.clone();
+  centerMat.opacity = ghost ? 0.05 : 0.16;
+  const centerLine = new THREE.Mesh(new THREE.CylinderGeometry(0.0035, 0.0035, dims.height * 0.58, 8, 1, true), centerMat);
+  centerLine.position.set(0, dims.torsoRings[4]?.y || 0.08, 0.028);
+  centerLine.rotation.x = 0;
+  centerLine.renderOrder = 5;
+  group.add(centerLine);
+}
+
 function buildWebglBodyGroup(THREE, recordInput, previousInput, ghost = false) {
   const record = withBodyDefaults(recordInput);
   const previous = previousInput ? withBodyDefaults(previousInput) : null;
@@ -634,6 +668,7 @@ function buildWebglBodyGroup(THREE, recordInput, previousInput, ghost = false) {
 
   addLimbSet(THREE, group, dims, ghost, 'L', armLMat, foreLMat, thighLMat, calfLMat);
   addLimbSet(THREE, group, dims, ghost, 'R', armRMat, foreRMat, thighRMat, calfRMat);
+  addAnatomicalGuideRings(THREE, group, dims, ghost);
   return group;
 }
 
@@ -1055,6 +1090,21 @@ function drawFallbackFigure(ctx, canvas, snapshot, focusField, accentColor = '#6
   ctx.globalCompositeOperation = 'soft-light';
   ctx.fillRect(p.centerX - p.shoulderHalf * 1.1, y0, p.shoulderHalf * 2.2, y6 - y0);
   ctx.globalCompositeOperation = 'source-over';
+
+
+  const drawFallbackLandmark = (y, half, alpha) => {
+    ctx.save();
+    ctx.strokeStyle = hexToRgba(accent, alpha);
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 6]);
+    ctx.beginPath();
+    ctx.ellipse(p.centerX, y, Math.max(16, half), Math.max(7, half * 0.16), 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  };
+  drawFallbackLandmark(y2, p.chestHalf, 0.26);
+  drawFallbackLandmark(y3, p.waistHalf, 0.22);
+  drawFallbackLandmark(y4, p.hipHalf, 0.24);
 
   const focusMap = {
     chest: y2,

@@ -1,7 +1,7 @@
 {
-  "name": "Haochijia v37 Comprehensive Strengthened",
+  "name": "Haochijia v38 Human Panel Strengthened",
   "short_name": "Haochijia",
-  "description": "Comprehensive strengthened build with an enhanced 3D body panel, live nutrition rings, body records, translated food libraries, photo analysis, import/export, and GitHub sync.",
+  "description": "V38 strengthened build with a mature live-linked 3D body panel, fully Chinese-first food labels, improved nutrition advice, daily intake records, and stronger photo analysis.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

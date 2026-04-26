@@ -1,6 +1,6 @@
 {
-  "appVersion": "v36-comprehensive-nourishnest",
-  "auditedAt": "2026-04-26T05:07:41.706Z",
+  "appVersion": "v38-human-panel-translation-intake-photo",
+  "auditedAt": "2026-04-26T08:43:12.926Z",
   "totalRows": 109910,
   "checks": [
     {
@@ -43,6 +43,14 @@
       }
     }
   ],
-  "conclusion": "中文库与国际库的中文名、英文名、原始名字段均为 0 缺失；仅国际库 part01 有 15 条缺少条码。",
-  "updatedFor": "Haochijia v36 NourishNest comprehensive build"
+  "conclusion": "中文库与国际库均已补齐中文展示名；z 与 labels.zh 已同步为中文优先显示。国际库 part01 仍只有 15 条缺少条码，营养字段完整。",
+  "updatedFor": "Haochijia v38 strengthened build",
+  "translationPass": {
+    "strategy": "static JSON zh/z sync plus runtime Chinese-first fallback",
+    "rowsChecked": 109910,
+    "chineseDisplayNameMissing": 0,
+    "updatedRowsEstimate": 40445,
+    "genericChineseFallbackRows": 9947,
+    "note": "z 与 labels.zh 已同步；labels.en / labels.original 保留原始名称用于检索、条码和 OCR 匹配。"
+  }
 }
