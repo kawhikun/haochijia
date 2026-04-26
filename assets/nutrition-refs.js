@@ -1,4 +1,4 @@
-export const APP_VERSION = '3.1.0';
+export const APP_VERSION = '3.4.0';
 
 export const ACTIVITY_LEVELS = {
   sedentary: { label: '久坐', short: '久坐', description: '日常走动少，几乎不安排运动' },
@@ -37,6 +37,25 @@ export const GLUCOSE_STATUSES = {
   type1: { label: '1 型糖尿病' },
   type2: { label: '2 型糖尿病' },
   gestational: { label: '妊娠糖尿病' },
+};
+
+export const CYCLE_PHASES = {
+  none: { label: '未记录 / 不适用' },
+  menstruation: { label: '经期' },
+  follicular: { label: '卵泡期' },
+  ovulation: { label: '排卵期' },
+  luteal: { label: '黄体期 / 经前' },
+  perimenopause: { label: '围绝经期' },
+  menopause: { label: '绝经后' },
+};
+
+export const JOINT_FOCUS_AREAS = {
+  none: { label: '无特殊' },
+  knee: { label: '膝' },
+  heel: { label: '跟骨 / 足跟' },
+  hip: { label: '髋' },
+  spine: { label: '腰背 / 脊柱' },
+  multi: { label: '多部位' },
 };
 
 const AGE_BANDS = [
@@ -421,6 +440,9 @@ export function sanitizeProfile(raw = {}) {
   const diet = ['vegan', 'vegetarian', 'pescetarian', 'omnivore'].includes(raw.diet) ? raw.diet : 'omnivore';
   const physiology = PHYSIOLOGY_STATES[raw.physiology] ? raw.physiology : 'standard';
   const glucoseStatus = GLUCOSE_STATUSES[raw.glucoseStatus] ? raw.glucoseStatus : 'normal';
+  const cyclePhaseRaw = CYCLE_PHASES[raw.cyclePhase] ? raw.cyclePhase : 'none';
+  const jointFocus = JOINT_FOCUS_AREAS[raw.jointFocus] ? raw.jointFocus : 'none';
+  const isFemale = sex === 'female';
   return {
     sex,
     age,
@@ -431,7 +453,14 @@ export function sanitizeProfile(raw = {}) {
     training,
     trainingHoursWeek: clamp(Number(raw.trainingHoursWeek) || 0, 0, 40),
     diet,
-    physiology: sex === 'male' ? 'standard' : physiology,
+    physiology: isFemale ? physiology : 'standard',
+    cyclePhase: isFemale ? cyclePhaseRaw : 'none',
+    heavyFlow: isFemale && Boolean(raw.heavyFlow),
+    periodCramps: isFemale && Boolean(raw.periodCramps),
+    lowSun: Boolean(raw.lowSun),
+    jointFocus,
+    bodyFat: clamp(Number(raw.bodyFat) || 22, 2, 60),
+    focusNote: String(raw.focusNote || '').slice(0, 180),
     smoker: Boolean(raw.smoker),
     glucoseStatus,
     conditions: {
@@ -439,6 +468,7 @@ export function sanitizeProfile(raw = {}) {
       dyslipidemia: Boolean(raw.conditions?.dyslipidemia || raw.conditions?.hyperlipidemia),
       boneRisk: Boolean(raw.conditions?.boneRisk),
       anemiaRisk: Boolean(raw.conditions?.anemiaRisk),
+      jointPain: Boolean(raw.conditions?.jointPain || raw.jointPain),
     },
   };
 }
@@ -468,14 +498,16 @@ export function calculateTargets(rawProfile = {}) {
 
   let ironMg = dri.ironMg;
   if (profile.diet === 'vegetarian' || profile.diet === 'vegan') ironMg *= 1.8;
-  if (profile.conditions.anemiaRisk) ironMg = Math.max(ironMg, dri.ironMg);
+  if (profile.conditions.anemiaRisk || profile.heavyFlow || profile.cyclePhase === 'menstruation') ironMg = Math.max(ironMg, dri.ironMg);
 
   let calciumMg = dri.calciumMg;
   let vitaminDMcg = dri.vitaminDMcg;
-  if (profile.conditions.boneRisk || (profile.sex === 'female' && profile.age >= 50)) {
-    calciumMg = Math.max(calciumMg, profile.sex === 'female' && profile.age >= 50 ? 1200 : dri.calciumMg);
-    vitaminDMcg = Math.max(vitaminDMcg, profile.age >= 70 ? 20 : 15);
+  const menopauseBoneMode = profile.sex === 'female' && (profile.cyclePhase === 'perimenopause' || profile.cyclePhase === 'menopause');
+  if (profile.conditions.boneRisk || profile.conditions.jointPain || menopauseBoneMode || (profile.sex === 'female' && profile.age >= 50)) {
+    calciumMg = Math.max(calciumMg, profile.sex === 'female' && (profile.age >= 50 || menopauseBoneMode) ? 1200 : dri.calciumMg);
+    vitaminDMcg = Math.max(vitaminDMcg, profile.age >= 70 || profile.lowSun ? 20 : 15);
   }
+  if (profile.lowSun) vitaminDMcg = Math.max(vitaminDMcg, profile.age >= 70 ? 20 : 15);
 
   const sodiumMax = profile.conditions.hypertension ? 1500 : 2300;
   const satFatMax = (calories * (profile.conditions.dyslipidemia ? 0.06 : 0.10)) / 9;
@@ -492,9 +524,9 @@ export function calculateTargets(rawProfile = {}) {
     sodium: { id: 'sodium', type: 'max', target: round0(sodiumMax), unit: 'mg', label: '钠', note: profile.conditions.hypertension ? '高血压模式按 1500 mg / 天更严格控制。' : '建议尽量不超过 2300 mg / 天。' },
     satFat: { id: 'satFat', type: 'max', target: round1(satFatMax), unit: 'g', label: '饱和脂肪', note: profile.conditions.dyslipidemia ? '血脂风险模式采用更严格上限。' : '按总热量约 10% 估算。' },
     potassium: { id: 'potassium', type: 'min', target: round0(dri.potassiumMg), unit: 'mg', label: '钾', note: '长期偏低比单日波动更值得关注。' },
-    calcium: { id: 'calcium', type: 'min', target: round0(calciumMg), unit: 'mg', label: '钙', note: profile.conditions.boneRisk ? '骨健康模式会优先保证钙。' : '' },
+    calcium: { id: 'calcium', type: 'min', target: round0(calciumMg), unit: 'mg', label: '钙', note: profile.conditions.boneRisk || profile.conditions.jointPain || menopauseBoneMode ? '骨关节 / 围绝经模式会优先保证钙。' : '' },
     phosphorus: { id: 'phosphorus', type: 'min', target: round0(dri.phosphorusMg), unit: 'mg', label: '磷', note: '' },
-    iron: { id: 'iron', type: 'min', target: round1(ironMg), unit: 'mg', label: '铁', note: profile.diet !== 'omnivore' ? '素食模式按更高铁参考值估算。' : '' },
+    iron: { id: 'iron', type: 'min', target: round1(ironMg), unit: 'mg', label: '铁', note: (profile.conditions.anemiaRisk || profile.heavyFlow || profile.cyclePhase === 'menstruation') ? '经期 / 经量偏多 / 贫血风险会把铁放到优先提醒。' : profile.diet !== 'omnivore' ? '素食模式按更高铁参考值估算。' : '' },
     magnesium: { id: 'magnesium', type: 'min', target: round0(dri.magnesiumMg), unit: 'mg', label: '镁', note: '' },
     zinc: { id: 'zinc', type: 'min', target: round1(dri.zincMg), unit: 'mg', label: '锌', note: '' },
     copper: { id: 'copper', type: 'min', target: round1(dri.copperMg), unit: 'mg', label: '铜', note: '' },
@@ -503,15 +535,15 @@ export function calculateTargets(rawProfile = {}) {
     iodine: { id: 'iodine', type: 'min', target: round0(dri.iodineMcg), unit: 'µg', label: '碘', note: profile.physiology !== 'standard' ? '孕期 / 哺乳期会特别关注碘。' : '' },
     vitaminA: { id: 'vitaminA', type: 'min', target: round0(dri.vitaminAMcg), unit: 'µg RAE', label: '维生素 A', note: '' },
     vitaminC: { id: 'vitaminC', type: 'min', target: round0(vitaminCMg), unit: 'mg', label: '维生素 C', note: profile.smoker ? '已按吸烟模式额外上调。' : '' },
-    vitaminD: { id: 'vitaminD', type: 'min', target: round1(vitaminDMcg), unit: 'µg', label: '维生素 D', note: profile.conditions.boneRisk ? '骨健康模式会更关注维生素 D。' : '' },
+    vitaminD: { id: 'vitaminD', type: 'min', target: round1(vitaminDMcg), unit: 'µg', label: '维生素 D', note: profile.conditions.boneRisk || profile.conditions.jointPain || profile.lowSun ? '骨关节 / 日晒少模式会更关注维生素 D。' : '' },
     vitaminE: { id: 'vitaminE', type: 'min', target: round1(dri.vitaminEMg), unit: 'mg', label: '维生素 E', note: '' },
-    vitaminK: { id: 'vitaminK', type: 'min', target: round0(dri.vitaminKMcg), unit: 'µg', label: '维生素 K', note: '' },
+    vitaminK: { id: 'vitaminK', type: 'min', target: round0(dri.vitaminKMcg), unit: 'µg', label: '维生素 K', note: profile.conditions.boneRisk || menopauseBoneMode ? '骨健康模式会把维生素 K 与钙、维生素 D 一起显示。' : '' },
     vitaminB1: { id: 'vitaminB1', type: 'min', target: round1(dri.vitaminB1Mg), unit: 'mg', label: '维生素 B1', note: '' },
     vitaminB2: { id: 'vitaminB2', type: 'min', target: round1(dri.vitaminB2Mg), unit: 'mg', label: '维生素 B2', note: '' },
     niacin: { id: 'niacin', type: 'min', target: round1(dri.niacinMg), unit: 'mg', label: '烟酸', note: '' },
     vitaminB6: { id: 'vitaminB6', type: 'min', target: round1(dri.vitaminB6Mg), unit: 'mg', label: '维生素 B6', note: '' },
-    folate: { id: 'folate', type: 'min', target: round0(dri.folateMcg), unit: 'µg DFE', label: '叶酸', note: profile.physiology.startsWith('pregnant') ? '孕期模式会提高叶酸参考值。' : '' },
-    vitaminB12: { id: 'vitaminB12', type: 'min', target: round1(dri.vitaminB12Mcg), unit: 'µg', label: '维生素 B12', note: profile.age >= 50 || profile.diet !== 'omnivore' ? '需额外关注强化食品或补充剂来源。' : '' },
+    folate: { id: 'folate', type: 'min', target: round0(dri.folateMcg), unit: 'µg DFE', label: '叶酸', note: profile.physiology.startsWith('pregnant') ? '孕期模式会提高叶酸参考值。' : profile.heavyFlow || profile.conditions.anemiaRisk ? '经量偏多 / 贫血风险会把叶酸纳入造血支持提醒。' : '' },
+    vitaminB12: { id: 'vitaminB12', type: 'min', target: round1(dri.vitaminB12Mcg), unit: 'µg', label: '维生素 B12', note: profile.heavyFlow || profile.conditions.anemiaRisk ? '经量偏多 / 贫血风险会把 B12 纳入红细胞支持提醒。' : profile.age >= 50 || profile.diet !== 'omnivore' ? '需额外关注强化食品或补充剂来源。' : '' },
     pantothenicAcid: { id: 'pantothenicAcid', type: 'min', target: round1(dri.pantothenicMg), unit: 'mg', label: '泛酸', note: '' },
     biotin: { id: 'biotin', type: 'min', target: round0(dri.biotinMcg), unit: 'µg', label: '生物素', note: '' },
     omega3: { id: 'omega3', type: 'min', target: round1(dri.alaG), unit: 'g', label: 'Omega-3', note: '按 α-亚麻酸参考值估算。' },
@@ -530,8 +562,14 @@ export function calculateTargets(rawProfile = {}) {
   if (profile.diet === 'pescetarian') notes.push('鱼素模式会保留常规蛋白与 B12 逻辑，并更容易补足 Omega-3。');
   if (profile.conditions.hypertension) notes.push('高血压模式按 1500 mg 钠上限排序提醒。');
   if (profile.conditions.dyslipidemia) notes.push('血脂风险模式会把饱和脂肪控制得更严格。');
-  if (profile.conditions.boneRisk) notes.push('骨健康模式会优先把钙和维生素 D 排在前面。');
+  if (profile.conditions.boneRisk) notes.push('骨健康模式会优先把钙、维生素 D、维生素 K 和足量蛋白排在前面。');
+  if (profile.conditions.jointPain || profile.jointFocus !== 'none') notes.push('关节关注模式会优先提示 Omega-3、维生素 C、镁、蛋白质与体重管理；持续疼痛仍应线下评估。');
+  if (profile.lowSun) notes.push('日晒少模式会把维生素 D 提醒前置；补充剂剂量需结合血检和医嘱。');
   if (profile.conditions.anemiaRisk) notes.push('贫血风险模式会把铁、叶酸、维生素 B12 的提醒前置，但缺铁诊断仍需要化验。');
+  if (profile.cyclePhase === 'menstruation') notes.push('经期模式会前置铁、镁、水分和优质蛋白，尤其适合记录疲劳、食欲和经量变化。');
+  if (profile.cyclePhase === 'luteal' || profile.periodCramps) notes.push('黄体期 / 经前不适会前置镁、钙、Omega-3 和稳定碳水，偏向缓解波动而不是激进控热量。');
+  if (profile.heavyFlow) notes.push('经量偏多会强化铁、叶酸和维生素 B12 提醒；若长期偏多或乏力，应结合血红蛋白 / 铁蛋白检查。');
+  if (menopauseBoneMode) notes.push('围绝经 / 绝经后模式会提高骨健康优先级，尤其关注钙、维生素 D、蛋白质和抗阻训练。');
   const glucoseNote = glucoseStatusNote(profile);
   if (glucoseNote) notes.push(glucoseNote);
   const conflictNote = femalePhysiologyConflictNote(profile);
@@ -548,6 +586,8 @@ export function calculateTargets(rawProfile = {}) {
     { label: '训练模式', value: TRAINING_MODES[profile.training].label },
     { label: '训练时长', value: `${round1(profile.trainingHoursWeek)} 小时 / 周` },
     { label: '生理状态', value: PHYSIOLOGY_STATES[profile.physiology].label },
+    { label: '生理周期', value: CYCLE_PHASES[profile.cyclePhase].label },
+    { label: '关节关注', value: JOINT_FOCUS_AREAS[profile.jointFocus].label },
     { label: '糖代谢状态', value: GLUCOSE_STATUSES[profile.glucoseStatus].label },
     { label: '蛋白最低参考', value: `${generalProteinFloor} g / 天` },
     { label: '训练蛋白区间', value: profile.training === 'none' ? '当前无专项训练' : `${modeProteinMin} – ${modeProteinMax} g / 天` },
@@ -582,6 +622,11 @@ export function defaultProfile() {
     physiology: 'standard',
     smoker: false,
     glucoseStatus: 'normal',
+    cyclePhase: 'none',
+    heavyFlow: false,
+    periodCramps: false,
+    lowSun: false,
+    jointFocus: 'none',
     conditions: {},
   });
 }

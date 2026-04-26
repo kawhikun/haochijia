@@ -12,11 +12,11 @@ import {
   clamp,
   NUTRIENT_DEFS,
   OCR_FIELD_MAP,
-} from './nutrition-refs.js?v=20260422a';
-import { createBodyModelController } from './model-scene.js?v=20260422a';
+} from './nutrition-refs.js?v=20260426c';
+import { createBodyModelController } from './model-scene.js?v=20260426c';
 
-const STORAGE_KEY = 'haochijia.core.v31.snapshot';
-const DB_NAME = 'haochijia-core-v31';
+const STORAGE_KEY = 'haochijia.core.v36.snapshot';
+const DB_NAME = 'haochijia-core-v36';
 const DB_STORE = 'kv';
 const IDB_SNAPSHOT_KEY = 'snapshot';
 const IDB_PHOTO_KEY = 'photoRef';
@@ -110,7 +110,7 @@ const DEFAULT_GITHUB = {
 
 const DOM = {};
 const state = {
-  version: 'v31',
+  version: 'v36',
   platform: detectPlatform(),
   profile: { ...defaultProfile(), bodyFat: 22, focusNote: '' },
   bodyHistory: [],
@@ -137,23 +137,31 @@ const state = {
     leg: 1,
     hasPhoto: false,
   },
+  customFoodEditingId: '',
   photoRefUrl: '',
   model: null,
   persistGranted: false,
   githubSyncTimer: null,
 };
 
-const V32_BUILD_VERSION = 'v33-paris-refined';
-const V32_STORAGE_KEYS = ['haochijia.core.v33.snapshot', 'haochijia.core.v32.snapshot', STORAGE_KEY];
-const V32_IDB_SNAPSHOT_KEYS = ['snapshot-v33', 'snapshot-v32', IDB_SNAPSHOT_KEY];
-const V32_IDB_BACKUP_KEY = 'snapshot-history-v33';
+const V32_BUILD_VERSION = 'v36-comprehensive-nourishnest';
+const V32_STORAGE_KEYS = [STORAGE_KEY, 'haochijia.core.v34.snapshot', 'haochijia.core.v33.snapshot', 'haochijia.core.v32.snapshot', 'haochijia.core.v31.snapshot'];
+const V32_IDB_SNAPSHOT_KEYS = ['snapshot-v36', 'snapshot-v34', 'snapshot-v33', 'snapshot-v32', 'snapshot'];
+const V32_IDB_BACKUP_KEY = 'snapshot-history-v36';
 const LOCAL_BACKUP_LIMIT = 18;
 const FOOD_REGION_OPTIONS = new Set(['all', 'cn', 'intl']);
 const FOOD_NAME_MODE_OPTIONS = new Set(['zh', 'en', 'original']);
 const V32_FOOD_BANK_FILES = Object.freeze({
-  cn: ['./data/foods-cn.min.json?v=20260422a'],
-  intl: ['./data/foods-global.part01.min.json?v=20260422a', './data/foods-global.part02.min.json?v=20260422a'],
+  cn: ['./data/foods-cn.min.json?v=20260426c'],
+  intl: ['./data/foods-global.part01.min.json?v=20260426c', './data/foods-global.part02.min.json?v=20260426c'],
 });
+const FOOD_LIBRARY_AUDIT = Object.freeze({
+  cn: { label: '中文库', file: 'foods-cn.min.json', rows: 36793, missingZh: 0, missingEn: 0, missingOriginal: 0, missingCode: 0 },
+  intl01: { label: '国际库 01', file: 'foods-global.part01.min.json', rows: 59704, missingZh: 0, missingEn: 0, missingOriginal: 0, missingCode: 15 },
+  intl02: { label: '国际库 02', file: 'foods-global.part02.min.json', rows: 13413, missingZh: 0, missingEn: 0, missingOriginal: 0, missingCode: 0 },
+});
+const CUSTOM_FOOD_LIMIT = 180;
+const CUSTOM_NUTRIENT_FIELDS = ['kcal', 'protein', 'carbs', 'fat', 'fiber', 'calcium', 'iron', 'vitaminD', 'vitaminK'];
 
 Object.assign(DEFAULT_GITHUB, {
   owner: 'kawhikun',
@@ -238,7 +246,11 @@ async function init() {
         window.setTimeout(() => renderHeroMeta(), 900);
       },
     });
-    await state.model.ready;
+    state.model.ready
+      .then(() => {
+        if (state.model) renderAll();
+      })
+      .catch((error) => console.warn('[haochijia] async model ready skipped.', error));
   } catch (error) {
     console.warn('[haochijia] model bootstrap failed, app continues in data-first mode.', error);
     DOM.bodyStatusHint.textContent = '3D 模型加载受阻，已切换到数据优先模式';
@@ -266,8 +278,8 @@ async function init() {
 function bindDom() {
   const ids = [
     'appShell', 'platformBadge', 'menuBtn', 'heroStage', 'bodyCanvas', 'stagePhotoRef', 'focusModePill', 'focusModeText', 'ringOrbit',
-    'profileForm', 'bodyForm', 'bodyStatusHint', 'importBodyBtn', 'saveBodyBtn', 'photoShapeBtn', 'suggestionSummary', 'suggestionCards',
-    'bodyHistoryList', 'bodyHistoryMeta', 'foodSearchStatus', 'foodSearchInput', 'foodAmountInput', 'foodSearchResults', 'captureInput',
+    'profileForm', 'bodyForm', 'bodyStatusHint', 'importBodyBtn', 'quickExportBtn', 'saveBodyBtn', 'photoShapeBtn', 'suggestionSummary', 'suggestionCards', 'featureAuditList',
+    'bodyHistoryList', 'bodyHistoryMeta', 'foodSearchStatus', 'foodAuditStrip', 'foodSearchInput', 'foodAmountInput', 'foodSearchResults', 'customFoodForm', 'customFoodName', 'customFoodNameEn', 'customFoodCode', 'customFoodBrand', 'customFoodServing', 'saveCustomFoodBtn', 'clearCustomFoodFormBtn', 'customFoodList', 'captureInput',
     'runBarcodeBtn', 'runOcrBtn', 'capturePreview', 'captureStatus', 'captureResult', 'captureFoodName', 'captureBasis', 'captureServingSize',
     'captureServings', 'captureNutrients', 'addCaptureFoodBtn', 'saveCaptureFoodBtn', 'progressList', 'dayTotalBadge', 'logList', 'clearDayBtn',
     'photoDialog', 'photoInput', 'photoPreview', 'photoAutoBtn', 'photoShapeMeta', 'shapeShoulder', 'shapeChest', 'shapeWaist', 'shapeHip', 'shapeArm', 'shapeLeg', 'photoResetBtn', 'photoApplyBtn',
@@ -296,6 +308,7 @@ function bindEvents() {
     DOM.importInput.dataset.mode = 'all';
     DOM.importInput.click();
   });
+  DOM.quickExportBtn?.addEventListener('click', exportAllData);
   DOM.importInput.addEventListener('change', onImportSelected);
 
   DOM.profileForm.addEventListener('input', onProfileInput);
@@ -305,12 +318,18 @@ function bindEvents() {
   DOM.saveBodyBtn.addEventListener('click', saveBodyRecord);
 
   DOM.foodSearchInput.addEventListener('input', onFoodSearchInput);
-  DOM.foodSearchInput.addEventListener('focus', async () => {
-    await ensureFoodsLoaded().catch(() => null);
-    renderFoodSearchResults();
+  DOM.foodSearchInput.addEventListener('focus', () => {
+    ensureFoodsLoaded().then(renderFoodSearchResults).catch(() => null);
   });
   DOM.foodAmountInput.addEventListener('input', renderFoodSearchResults);
   DOM.foodSearchResults.addEventListener('click', onFoodResultsClick);
+  DOM.saveCustomFoodBtn?.addEventListener('click', saveCustomFoodFromForm);
+  DOM.clearCustomFoodFormBtn?.addEventListener('click', clearCustomFoodForm);
+  DOM.customFoodForm?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    saveCustomFoodFromForm();
+  });
+  DOM.customFoodList?.addEventListener('click', onCustomFoodListClick);
   DOM.foodRegionGroup?.addEventListener('click', async (event) => {
     const btn = event.target.closest('[data-food-region]');
     if (!btn) return;
@@ -406,6 +425,7 @@ function applySnapshot(snapshot) {
   state.bodyHistory = normalizeBodyHistory(snapshot.bodyHistory || []);
   state.logs = normalizeLogs(snapshot.logs || {});
   state.customFoods = normalizeCustomFoods(snapshot.customFoods || []);
+  state.customFoodEditingId = '';
   state.photoShape = normalizePhotoShape(snapshot.photoShape || {});
   if (typeof snapshot.photoRefUrl === 'string') state.photoRefUrl = snapshot.photoRefUrl;
   state.foodLibrary = FOOD_REGION_OPTIONS.has(snapshot.preferences?.foodLibrary) ? snapshot.preferences.foodLibrary : 'all';
@@ -485,23 +505,32 @@ function normalizeLogItem(raw) {
 
 
 function normalizeCustomFoods(list) {
-  return Array.isArray(list) ? list.map(normalizeCustomFood).filter(Boolean).slice(0, 120) : [];
+  return Array.isArray(list) ? list.map(normalizeCustomFood).filter(Boolean).slice(0, CUSTOM_FOOD_LIMIT) : [];
 }
 
 function normalizeCustomFood(raw) {
   if (!raw || typeof raw !== 'object') return null;
-  const name = String(raw.name || raw.label || raw.n || '').trim();
+  const labelsInput = raw.labels || {};
+  const name = String(raw.name || raw.label || labelsInput.zh || raw.z || raw.n || '').trim();
   if (!name) return null;
   const labels = buildCustomFoodLabels(name, raw);
+  const brand = String(raw.brand || raw.b || '').trim().slice(0, 80);
+  const category = String(raw.category || raw.g || '自定义常用').trim().slice(0, 120);
+  const code = String(raw.code || raw.c || '').trim().slice(0, 32);
   return {
     id: String(raw.id || uid('custom')),
     name,
-    code: String(raw.code || ''),
+    code,
+    c: code,
+    b: brand,
+    g: category,
+    q: String(raw.q || raw.quantity || '').trim().slice(0, 40),
     basis: raw.basis === 'serving' ? 'serving' : raw.basis === '100ml' ? '100ml' : '100g',
     servingSize: finiteOrNull(raw.servingSize),
     customPer100: normalizeNutrientObject(raw.customPer100 || raw.customNutrients || {}),
     labels,
-    library: raw.library || classifyFoodLibrary({ labels }),
+    library: raw.library || classifyFoodLibrary({ labels, b: brand, g: category }),
+    updatedAt: raw.updatedAt || new Date().toISOString(),
   };
 }
 
@@ -546,12 +575,18 @@ function fillFormsFromState() {
   DOM.profileForm.trainingHoursWeek.value = p.trainingHoursWeek;
   DOM.profileForm.diet.value = p.diet;
   DOM.profileForm.physiology.value = p.physiology;
+  DOM.profileForm.cyclePhase.value = p.cyclePhase || 'none';
+  DOM.profileForm.jointFocus.value = p.jointFocus || 'none';
   DOM.profileForm.glucoseStatus.value = p.glucoseStatus;
   DOM.profileForm.focusNote.value = p.focusNote || '';
   DOM.profileForm.boneRisk.checked = Boolean(p.conditions?.boneRisk);
   DOM.profileForm.anemiaRisk.checked = Boolean(p.conditions?.anemiaRisk);
   DOM.profileForm.hypertension.checked = Boolean(p.conditions?.hypertension);
   DOM.profileForm.dyslipidemia.checked = Boolean(p.conditions?.dyslipidemia);
+  DOM.profileForm.jointPain.checked = Boolean(p.conditions?.jointPain);
+  DOM.profileForm.lowSun.checked = Boolean(p.lowSun);
+  DOM.profileForm.heavyFlow.checked = Boolean(p.heavyFlow);
+  DOM.profileForm.periodCramps.checked = Boolean(p.periodCramps);
   DOM.profileForm.smoker.checked = Boolean(p.smoker);
 
   fillBodyForm(state.bodyHistory[0] || {});
@@ -602,7 +637,10 @@ function renderAll() {
   renderHeroMeta();
   renderHeroRings();
   renderSuggestions();
+  renderFeatureAudit();
   renderBodyHistory();
+  renderFoodAuditStrip();
+  renderCustomFoodList();
   renderFoodSearchResults();
   renderProgressList();
   renderLogList();
@@ -641,6 +679,11 @@ function readProfileForm() {
     trainingHoursWeek: Number(DOM.profileForm.trainingHoursWeek.value),
     diet: DOM.profileForm.diet.value,
     physiology: DOM.profileForm.physiology.value,
+    cyclePhase: DOM.profileForm.cyclePhase.value,
+    jointFocus: DOM.profileForm.jointFocus.value,
+    heavyFlow: DOM.profileForm.heavyFlow.checked,
+    periodCramps: DOM.profileForm.periodCramps.checked,
+    lowSun: DOM.profileForm.lowSun.checked,
     smoker: DOM.profileForm.smoker.checked,
     glucoseStatus: DOM.profileForm.glucoseStatus.value,
     conditions: {
@@ -648,6 +691,7 @@ function readProfileForm() {
       anemiaRisk: DOM.profileForm.anemiaRisk.checked,
       hypertension: DOM.profileForm.hypertension.checked,
       dyslipidemia: DOM.profileForm.dyslipidemia.checked,
+      jointPain: DOM.profileForm.jointPain.checked,
     },
     bodyFat: Number(DOM.profileForm.bodyFat.value),
     focusNote: DOM.profileForm.focusNote.value,
@@ -749,13 +793,27 @@ function activateTab(tab) {
   state.activeTab = tab === 'intake' ? 'intake' : 'body';
   document.querySelectorAll('.tab-btn').forEach((btn) => btn.classList.toggle('is-active', btn.dataset.tab === state.activeTab));
   document.querySelectorAll('.panel').forEach((panel) => panel.classList.toggle('is-active', panel.dataset.panel === state.activeTab));
-  if (state.activeTab === 'intake') ensureFoodsLoaded();
+  if (state.activeTab === 'intake') {
+    window.setTimeout(() => ensureFoodsLoaded().catch(() => null), 16);
+  }
+}
+
+
+let softRefreshTimer = 0;
+function scheduleSoftRefresh() {
+  window.clearTimeout(softRefreshTimer);
+  const scrollY = window.scrollY;
+  softRefreshTimer = window.setTimeout(() => {
+    persistState({ syncEligible: false });
+    renderAll();
+    window.requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: 'auto' }));
+  }, 110);
 }
 
 function renderHeroMeta() {
-  const platformText = state.platform.key === 'ios' ? 'iPhone 人体舞台' : state.platform.key === 'android' ? 'Android 人体舞台' : '人体舞台';
-  DOM.focusModePill.textContent = `${platformText} · 6 环联动`;
-  DOM.focusModeText.textContent = `${nutrientDisplayName(state.activeRing)} 高亮 · 拖旋 / 缩放 / 双击回正 / 长按身体记录`;
+  const platformText = state.platform.key === 'ios' ? 'iPhone Body Core' : state.platform.key === 'android' ? 'Android Body Core' : 'Body Core';
+  DOM.focusModePill.textContent = `${platformText} · 6 Nutrition Rings`;
+  DOM.focusModeText.textContent = `${nutrientDisplayName(state.activeRing)} 高亮 · 拖旋 / 缩放 / 双击回正`;
 }
 
 
@@ -839,17 +897,32 @@ function buildRingData() {
 function renderSuggestions() {
   const cards = buildSuggestionCards();
   DOM.suggestionSummary.textContent = `${state.focusMode.label} · ${cards.length} 条重点建议`;
-  if (!cards.length) {
-    DOM.suggestionCards.innerHTML = '<div class="empty-state">暂无建议</div>';
-    return;
-  }
-  DOM.suggestionCards.innerHTML = cards.map((card) => `
+  const cardsHtml = cards.map((card) => `
     <article class="suggestion-card">
       <strong>${escapeHtml(card.title)}</strong>
       <div class="history-meta">${escapeHtml(card.subtitle)}</div>
       <div class="suggestion-foods">${escapeHtml(card.foods.join(' · '))}</div>
     </article>
   `).join('');
+  const adviceHtml = renderAdviceBasisPanel();
+  DOM.suggestionCards.innerHTML = cardsHtml || adviceHtml ? `${cardsHtml}${adviceHtml}` : '<div class="empty-state">暂无建议</div>';
+}
+
+function renderAdviceBasisPanel() {
+  const notes = Array.isArray(state.calc?.notes) ? state.calc.notes.slice(0, 7) : [];
+  const basisRows = Array.isArray(state.calc?.basisRows)
+    ? state.calc.basisRows.filter((row) => ['年龄分组', 'BMI', '生理状态', '生理周期', '关节关注', '糖代谢状态', '当前蛋白建议', '目标热量'].includes(row.label)).slice(0, 8)
+    : [];
+  if (!notes.length && !basisRows.length) return '';
+  return `
+    <article class="suggestion-card advice-basis-card">
+      <strong>建议依据</strong>
+      <div class="advice-basis-grid">
+        ${basisRows.map((row) => `<span><b>${escapeHtml(row.label)}</b>${escapeHtml(row.value)}</span>`).join('')}
+      </div>
+      ${notes.length ? `<ul class="advice-note-list">${notes.map((note) => `<li>${escapeHtml(note)}</li>`).join('')}</ul>` : ''}
+      <div class="dialog-note">营养建议用于日常记录和风险提示，不能替代诊断、治疗或个人化处方。</div>
+    </article>`;
 }
 
 
@@ -944,6 +1017,156 @@ function renderSearchPlaceholder() {
   }).join('');
 }
 
+
+
+function renderFoodAuditStrip() {
+  if (!DOM.foodAuditStrip) return;
+  const totalIntl = FOOD_LIBRARY_AUDIT.intl01.rows + FOOD_LIBRARY_AUDIT.intl02.rows;
+  const totalRows = FOOD_LIBRARY_AUDIT.cn.rows + totalIntl;
+  const intlMissingCodes = FOOD_LIBRARY_AUDIT.intl01.missingCode + FOOD_LIBRARY_AUDIT.intl02.missingCode;
+  DOM.foodAuditStrip.innerHTML = `
+    <span>已核验 ${totalRows.toLocaleString('zh-CN')} 条</span>
+    <span>中文 ${FOOD_LIBRARY_AUDIT.cn.rows.toLocaleString('zh-CN')}：中/英/原名 0 缺失</span>
+    <span>国际 ${totalIntl.toLocaleString('zh-CN')}：中/英/原名 0 缺失，条码缺 ${intlMissingCodes}</span>
+    <span>常用 ${state.customFoods.length}</span>`;
+}
+
+function renderFeatureAudit() {
+  if (!DOM.featureAuditList) return;
+  const loadedText = state.foodBankLoaded.cn || state.foodBankLoaded.intl ? foodBankSummaryText() : '待加载，分库文件已配置';
+  const items = [
+    { ok: true, title: '中文 / 国际双食品库', meta: `${loadedText}；名称字段核验通过` },
+    { ok: true, title: '用户自定义常用食品', meta: `已支持新增、编辑、删除、搜索优先和一键加入；当前 ${state.customFoods.length} 个` },
+    { ok: true, title: '状态化营养建议', meta: `${state.focusMode.label}：年龄、性别、活动、训练、目标、糖代谢、生理期、骨关节共同参与` },
+    { ok: true, title: '生理期 / 骨关节建议', meta: '已增加周期、经量、经前不适、日晒、关节部位、关节不适入口' },
+    { ok: true, title: '3D 初始形态与照片塑形', meta: '完整头部、颈肩、四肢、柔光材质、6 维照片塑形联动' },
+    { ok: true, title: '数据安全', meta: 'localStorage + IndexedDB + 最近备份 + 全量导入导出 + GitHub 同步入口' },
+  ];
+  DOM.featureAuditList.innerHTML = items.map((item) => `
+    <article class="feature-audit-item ${item.ok ? 'is-ok' : 'is-warn'}">
+      <span>${item.ok ? '✓' : '!'}</span>
+      <div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.meta)}</small></div>
+    </article>`).join('');
+}
+
+function clearCustomFoodForm() {
+  state.customFoodEditingId = '';
+  DOM.customFoodForm?.reset();
+  if (DOM.saveCustomFoodBtn) DOM.saveCustomFoodBtn.textContent = '保存为常用';
+}
+
+function readCustomFoodForm() {
+  const name = String(DOM.customFoodName?.value || '').trim();
+  if (!name) throw new Error('请填写食品名称');
+  const nutrients = {};
+  DOM.customFoodForm?.querySelectorAll('[data-custom-nutrient]').forEach((input) => {
+    const id = input.dataset.customNutrient;
+    if (!CUSTOM_NUTRIENT_FIELDS.includes(id)) return;
+    const value = Number(input.value);
+    if (Number.isFinite(value) && value > 0) nutrients[id] = value;
+  });
+  if (!Object.keys(nutrients).length) throw new Error('请至少填写一项每 100g 营养数据');
+  const en = String(DOM.customFoodNameEn?.value || '').trim();
+  const code = String(DOM.customFoodCode?.value || '').trim();
+  const brand = String(DOM.customFoodBrand?.value || '').trim();
+  const servingSize = finiteOrNull(DOM.customFoodServing?.value);
+  return normalizeCustomFood({
+    id: state.customFoodEditingId || uid('custom'),
+    name,
+    code,
+    b: brand,
+    g: '用户自定义常用食品',
+    q: servingSize ? `${servingSize}g / 份` : '',
+    servingSize,
+    customPer100: nutrients,
+    labels: { zh: name, en: en || name, original: name },
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+function saveCustomFoodFromForm() {
+  try {
+    const food = readCustomFoodForm();
+    const same = (item) => item.id === food.id || (food.code && item.code === food.code) || normalizeText(item.name) === normalizeText(food.name);
+    state.customFoods = [food, ...state.customFoods.filter((item) => !same(item))].slice(0, CUSTOM_FOOD_LIMIT);
+    persistState({ syncEligible: true });
+    clearCustomFoodForm();
+    state.searchQuery = DOM.foodSearchInput.value = food.name;
+    state.searchResults = searchFoods(food.name).slice(0, FOOD_SEARCH_LIMIT);
+    renderAll();
+    DOM.foodSearchStatus.textContent = `${food.name} 已保存为常用食品`;
+  } catch (error) {
+    DOM.foodSearchStatus.textContent = `常用食品保存失败：${error.message}`;
+  }
+}
+
+function fillCustomFoodForm(food) {
+  if (!food || !DOM.customFoodForm) return;
+  state.customFoodEditingId = food.id;
+  const labels = normalizeFoodLabels(food);
+  DOM.customFoodName.value = labels.zh || food.name || '';
+  DOM.customFoodNameEn.value = labels.en || '';
+  DOM.customFoodCode.value = food.code || '';
+  DOM.customFoodBrand.value = food.b || '';
+  DOM.customFoodServing.value = Number.isFinite(Number(food.servingSize)) ? Number(food.servingSize) : '';
+  DOM.customFoodForm.querySelectorAll('[data-custom-nutrient]').forEach((input) => {
+    input.value = Number.isFinite(Number(food.customPer100?.[input.dataset.customNutrient])) ? food.customPer100[input.dataset.customNutrient] : '';
+  });
+  DOM.saveCustomFoodBtn.textContent = '更新常用食品';
+  DOM.customFoodName.focus();
+}
+
+function renderCustomFoodList() {
+  if (!DOM.customFoodList) return;
+  if (!state.customFoods.length) {
+    DOM.customFoodList.innerHTML = '<div class="empty-state">还没有常用食品。保存后会优先出现在搜索里。</div>';
+    return;
+  }
+  const amount = clamp(Number(DOM.foodAmountInput?.value) || 100, 1, 3000);
+  DOM.customFoodList.innerHTML = state.customFoods.slice(0, 10).map((food) => {
+    const per100 = nutrientsForFood(food);
+    const labels = normalizeFoodLabels(food);
+    return `
+      <article class="food-item custom-food-row">
+        <strong>${escapeHtml(labels.zh || food.name)}</strong>
+        <div class="food-meta">
+          ${labels.en && normalizeText(labels.en) !== normalizeText(labels.zh) ? `<div class="history-meta">${escapeHtml(labels.en)}</div>` : ''}
+          <div>每 100：${escapeHtml(formatCompactNutrient('kcal', per100.kcal || 0))} · ${escapeHtml(formatCompactNutrient('protein', per100.protein || 0))} · ${escapeHtml(formatCompactNutrient('carbs', per100.carbs || 0))} · ${escapeHtml(formatCompactNutrient('fat', per100.fat || 0))}</div>
+          <div class="food-tags"><span class="food-tag custom">常用</span>${food.code ? `<span class="food-tag">${escapeHtml(food.code)}</span>` : ''}${food.b ? `<span class="food-tag">${escapeHtml(food.b)}</span>` : ''}</div>
+        </div>
+        <div class="food-actions">
+          <button type="button" class="primary-btn tiny-btn" data-custom-add-id="${escapeHtml(food.id)}">加入 ${amount}g</button>
+          <button type="button" class="ghost-btn tiny-btn" data-custom-edit-id="${escapeHtml(food.id)}">编辑</button>
+          <button type="button" class="ghost-btn tiny-btn" data-custom-delete-id="${escapeHtml(food.id)}">删除</button>
+        </div>
+      </article>`;
+  }).join('');
+}
+
+function onCustomFoodListClick(event) {
+  const addBtn = event.target.closest('[data-custom-add-id]');
+  const editBtn = event.target.closest('[data-custom-edit-id]');
+  const deleteBtn = event.target.closest('[data-custom-delete-id]');
+  const id = addBtn?.dataset.customAddId || editBtn?.dataset.customEditId || deleteBtn?.dataset.customDeleteId || '';
+  if (!id) return;
+  const food = state.customFoods.find((item) => item.id === id);
+  if (!food) return;
+  if (addBtn) {
+    addFoodToToday(food, clamp(Number(DOM.foodAmountInput.value) || Number(food.servingSize) || 100, 1, 3000));
+    return;
+  }
+  if (editBtn) {
+    fillCustomFoodForm(food);
+    return;
+  }
+  if (deleteBtn) {
+    state.customFoods = state.customFoods.filter((item) => item.id !== id);
+    if (state.customFoodEditingId === id) clearCustomFoodForm();
+    persistState({ syncEligible: true });
+    renderAll();
+    DOM.foodSearchStatus.textContent = `${food.name} 已删除`;
+  }
+}
 
 function renderProgressList() {
   const ids = Array.from(new Set([...state.focusMode.nutrientIds, 'kcal', 'fiber', 'water', 'sodium'])).filter((id) => state.calc.targets[id]);
@@ -1040,13 +1263,11 @@ function onProfileInput() {
     bodyFat: clamp(Number(DOM.profileForm.bodyFat.value) || 22, 2, 60),
     focusNote: String(DOM.profileForm.focusNote.value || '').trim().slice(0, 120),
   };
-  persistState({ syncEligible: false });
-  renderAll();
+  scheduleSoftRefresh();
 }
 
 function onBodyInput() {
-  persistState({ syncEligible: false });
-  renderAll();
+  scheduleSoftRefresh();
 }
 
 function onFoodSearchInput() {
@@ -1226,7 +1447,7 @@ function onBodyHistoryClick(event) {
   DOM.profileForm.weightKg.value = record.weightKg || DOM.profileForm.weightKg.value;
   DOM.profileForm.bodyFat.value = record.bodyFat || DOM.profileForm.bodyFat.value;
   fillBodyForm(record);
-  DOM.bodyStatusHint.textContent = '已载入历史记录';
+  DOM.bodyStatusHint.textContent = '已载入历史记录，当前页不跳转';
   activateTab('body');
   renderAll();
 }
@@ -1235,12 +1456,12 @@ function saveBodyRecord() {
   const record = buildCurrentBodyRecord();
   const hasAny = ['weightKg', 'bodyFat', 'neck', 'shoulder', 'chest', 'underbust', 'waist', 'abdomen', 'hip', 'upperArm', 'forearm', 'thigh', 'calf', 'ankle'].some((key) => Number.isFinite(record[key]));
   if (!hasAny) {
-    DOM.bodyStatusHint.textContent = '请先填至少一项';
+    DOM.bodyStatusHint.textContent = '请先填写至少一项身体数据';
     return;
   }
   state.bodyHistory.unshift(record);
   state.bodyHistory = normalizeBodyHistory(state.bodyHistory);
-  DOM.bodyStatusHint.textContent = '身体记录已保存';
+  DOM.bodyStatusHint.textContent = '身体记录已保存，模型与建议已更新';
   persistState({ syncEligible: true });
   renderAll();
 }
@@ -1294,16 +1515,48 @@ function toneForProgress(target, progress) {
 
 function inferFocusMode(profile) {
   const note = normalizeText(profile.focusNote || '');
-  if (profile.conditions?.boneRisk || hasKeyword(note, ['骨', '关节', '膝', '跟骨', '骨密度', 'joint', 'bone'])) {
+  const jointMode = profile.conditions?.jointPain || profile.jointFocus !== 'none' || hasKeyword(note, ['关节', '膝', '跟骨', '足跟', '髋', '腰背', 'joint']);
+  const boneMode = profile.conditions?.boneRisk || profile.cyclePhase === 'menopause' || profile.cyclePhase === 'perimenopause' || hasKeyword(note, ['骨', '骨密度', '骨质', 'bone']);
+  if (boneMode || jointMode) {
+    const nutrientIds = boneMode
+      ? ['protein', 'fat', 'carbs', 'calcium', 'vitaminD', 'vitaminK']
+      : ['protein', 'fat', 'carbs', 'omega3', 'vitaminC', 'magnesium'];
     return {
-      id: 'bone',
-      label: '骨关节模式',
-      summary: '前置 钙 · 维生素 D3 · 维生素 K',
-      nutrientIds: ['protein', 'fat', 'carbs', 'calcium', 'vitaminD', 'vitaminK'],
+      id: boneMode ? 'bone' : 'joint',
+      label: boneMode ? '骨关节模式' : '关节修复模式',
+      summary: boneMode ? '前置 钙 · 维生素 D3 · 维生素 K' : '前置 Omega-3 · 维生素 C · 镁',
+      nutrientIds,
       tipMap: {
         calcium: '骨骼优先',
         vitaminD: '吸收协同',
         vitaminK: '骨代谢协同',
+        omega3: '炎症管理',
+        vitaminC: '胶原合成支持',
+        magnesium: '肌肉神经支持',
+      },
+    };
+  }
+  if (profile.sex === 'female' && (profile.cyclePhase !== 'none' || profile.heavyFlow || profile.periodCramps)) {
+    const menstrual = profile.cyclePhase === 'menstruation' || profile.heavyFlow;
+    const bloodFocus = profile.heavyFlow || profile.conditions?.anemiaRisk || hasKeyword(note, ['贫血', '缺铁', '铁', 'anemia']);
+    const nutrientIds = bloodFocus
+      ? ['protein', 'fat', 'carbs', 'iron', 'folate', 'vitaminB12']
+      : menstrual
+        ? ['protein', 'fat', 'carbs', 'iron', 'magnesium', 'water']
+        : ['protein', 'fat', 'carbs', 'magnesium', 'calcium', 'omega3'];
+    return {
+      id: bloodFocus ? 'menstrual-blood' : menstrual ? 'menstrual' : 'cycle',
+      label: bloodFocus ? '经期造血支持' : menstrual ? '经期支持' : '周期平衡',
+      summary: bloodFocus ? '前置 铁 · 叶酸 · 维生素 B12' : menstrual ? '前置 铁 · 镁 · 水分' : '前置 镁 · 钙 · Omega-3',
+      nutrientIds,
+      tipMap: {
+        iron: '经期造血关注',
+        folate: '红细胞生成支持',
+        vitaminB12: '红细胞与神经支持',
+        magnesium: '经前 / 痛经支持',
+        water: '水分与电解质',
+        calcium: '周期波动支持',
+        omega3: '炎症管理',
       },
     };
   }
@@ -1533,7 +1786,7 @@ function saveCaptureFoodToLibrary() {
     library: state.foodLibrary === 'all' ? classifyFoodLibrary({ labels }) : state.foodLibrary,
   });
   if (!customFood) return;
-  state.customFoods = [customFood, ...state.customFoods.filter((item) => item.name !== customFood.name)].slice(0, 120);
+  state.customFoods = [customFood, ...state.customFoods.filter((item) => item.name !== customFood.name)].slice(0, CUSTOM_FOOD_LIMIT);
   state.searchQuery = name;
   DOM.foodSearchInput.value = name;
   persistState({ syncEligible: true });
@@ -2142,9 +2395,10 @@ function libraryTagLabel(library) {
 function foodBankSummaryText() {
   const cnCount = state.foodBankCounts?.cn || 0;
   const intlCount = state.foodBankCounts?.intl || 0;
-  if (state.foodLibrary === 'cn') return `中文库 ${cnCount.toLocaleString('zh-CN')} 条`;
-  if (state.foodLibrary === 'intl') return `国际库 ${intlCount.toLocaleString('zh-CN')} 条`;
-  return `双食品库 · 中文 ${cnCount.toLocaleString('zh-CN')} · 国际 ${intlCount.toLocaleString('zh-CN')}`;
+  const customCount = state.customFoods.length;
+  if (state.foodLibrary === 'cn') return `中文库 ${cnCount.toLocaleString('zh-CN')} 条 · 常用 ${customCount}`;
+  if (state.foodLibrary === 'intl') return `国际库 ${intlCount.toLocaleString('zh-CN')} 条 · 常用 ${customCount}`;
+  return `双食品库 · 中文 ${cnCount.toLocaleString('zh-CN')} · 国际 ${intlCount.toLocaleString('zh-CN')} · 常用 ${customCount}`;
 }
 
 

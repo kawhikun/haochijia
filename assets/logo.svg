@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Haochijia NourishNest techno logo">
+  <defs>
+    <linearGradient id="bg" x1="28" y1="24" x2="230" y2="232" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.50" stop-color="#F5F0FF"/>
+      <stop offset="1" stop-color="#EAFBFF"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="54" y1="42" x2="204" y2="218" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#171A23"/>
+      <stop offset="0.38" stop-color="#5B4DFF"/>
+      <stop offset="0.72" stop-color="#16B8CC"/>
+      <stop offset="1" stop-color="#F3A86E"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="92" y1="64" x2="162" y2="118" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.96"/>
+      <stop offset="1" stop-color="#E7FBFF" stop-opacity="0.68"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#594CEB" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+  <rect x="18" y="18" width="220" height="220" rx="58" fill="url(#bg)"/>
+  <rect x="18.5" y="18.5" width="219" height="219" rx="57.5" fill="none" stroke="rgba(255,255,255,0.78)"/>
+  <!-- A custom glyph merging the ideas of 吃 + 美: mouth / nourishment below, elegant beauty crown above. -->
+  <g filter="url(#shadow)" fill="none" stroke="url(#mark)" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M78 58 L128 84 L178 58" stroke-width="16"/>
+    <path d="M128 48 V194" stroke-width="16"/>
+    <path d="M76 100 H180" stroke-width="14"/>
+    <path d="M88 100 V148 H168 V100" stroke-width="14"/>
+    <path d="M98 126 H158" stroke-width="12"/>
+    <path d="M82 170 L128 196 L174 170" stroke-width="16"/>
+  </g>
+  <path d="M100 74 L128 88 L156 74" fill="none" stroke="url(#shine)" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="128" cy="113" r="6.5" fill="url(#shine)"/>
+  <g stroke-linecap="round">
+    <path d="M44 78 H62" stroke="#16B8CC" stroke-width="5" opacity="0.62"/>
+    <path d="M194 78 H212" stroke="#5B4DFF" stroke-width="5" opacity="0.62"/>
+    <path d="M40 178 H58" stroke="#5B4DFF" stroke-width="4" opacity="0.42"/>
+    <path d="M198 178 H216" stroke="#16B8CC" stroke-width="4" opacity="0.42"/>
+  </g>
+</svg>

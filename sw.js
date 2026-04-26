@@ -1,21 +1,25 @@
-const CACHE_NAME = 'haochijia-v33-paris-refined-20260422a';
+const CACHE_NAME = 'haochijia-v36-nourishnest-20260426c';
 const APP_SHELL = [
   './',
   './index.html',
   './404.html',
   './manifest.webmanifest',
-  './assets/styles.css?v=20260422a',
-  './assets/core.js?v=20260422a',
-  './assets/model-scene.js?v=20260422a',
-  './assets/nutrition-refs.js?v=20260422a',
+  './assets/styles.css?v=20260426c',
+  './assets/core.js?v=20260426c',
+  './assets/model-scene.js?v=20260426c',
+  './assets/vendor/three.module.js',
+  './assets/vendor/OrbitControls.js',
+  './assets/nutrition-refs.js?v=20260426c',
   './assets/icon-192.png',
-  './assets/icon-512.png'
+  './assets/icon-512.png',
+  './assets/logo.svg'
 ];
 
 const DATA_FILES = [
-  './data/foods-cn.min.json?v=20260422a',
-  './data/foods-global.part01.min.json?v=20260422a',
-  './data/foods-global.part02.min.json?v=20260422a',
+  './data/foods-cn.min.json?v=20260426c',
+  './data/foods-global.part01.min.json?v=20260426c',
+  './data/foods-global.part02.min.json?v=20260426c',
+  './data/food-library-audit.json',
   './data/foods-regions.meta.json',
   './data/foods.meta.json'
 ];

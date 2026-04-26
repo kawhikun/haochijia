@@ -3,24 +3,25 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="description" content="好吃家 v33：首页 3D 人体舞台、6 条营养环、身体记录、营养建议、中文/国际双食品库、拍照分析、本地全量导入导出与 GitHub 同步入口。">
-    <meta name="theme-color" content="#faf2cb">
+    <meta name="description" content="好吃家 v36：NourishNest 全面强化版，首页 3D 人体模型与 6 条动态营养环、身体数据记录、状态化营养建议、双食品库、拍照摄入分析、导入导出和 GitHub 云端同步。">
+    <meta name="theme-color" content="#f8f3ea">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>好吃家 v33</title>
+    <title>Haochijia v36 NourishNest</title>
     <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="icon" href="./assets/logo.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./assets/icon-192.png">
-    <link rel="stylesheet" href="./assets/styles.css?v=20260422a">
+    <link rel="stylesheet" href="./assets/styles.css?v=20260426c">
   </head>
   <body>
     <div class="app-shell" id="appShell">
       <header class="topbar">
         <div class="brand-wrap">
-          <div class="brand-mark" aria-hidden="true">好</div>
+          <div class="brand-mark" aria-hidden="true"><img src="./assets/logo.svg" alt=""></div>
           <div class="brand-copy">
-            <strong>好吃家</strong>
-            <span id="platformBadge">iPhone / Android 适配</span>
+            <strong>好吃家 · NourishNest</strong>
+            <span id="platformBadge">NourishNest · iPhone / Android</span>
           </div>
         </div>
         <div class="topbar-actions">
@@ -36,8 +37,8 @@
           <div class="stage-photo-ref" id="stagePhotoRef"></div>
           <canvas id="bodyCanvas" class="body-canvas" width="900" height="1100"></canvas>
           <div class="hero-label">
-            <span class="mode-pill" id="focusModePill">首页 3D 人体 + 6 环</span>
-            <strong id="focusModeText">拖旋 / 缩放 / 双击回正 / 长按进入身体记录</strong>
+            <span class="mode-pill" id="focusModePill">3D Body Core + 6 Nutrition Rings</span>
+            <strong id="focusModeText">拖旋 / 缩放 / 双击回正</strong>
           </div>
           <div class="ring-orbit" id="ringOrbit"></div>
         </section>
@@ -52,7 +53,7 @@
             <article class="card compact-card">
               <div class="section-head compact-head">
                 <h2>用户状态</h2>
-                <span class="subtle-note" id="bodyStatusHint">本地三重兜底 · 保存不跳页</span>
+                <span class="subtle-note" id="bodyStatusHint">输入即暂存 · 保存不跳页</span>
               </div>
               <form id="profileForm" class="form-grid">
                 <label class="field">
@@ -131,6 +132,29 @@
                   </select>
                 </label>
                 <label class="field">
+                  <span>生理周期</span>
+                  <select name="cyclePhase">
+                    <option value="none">未记录 / 不适用</option>
+                    <option value="menstruation">经期</option>
+                    <option value="follicular">卵泡期</option>
+                    <option value="ovulation">排卵期</option>
+                    <option value="luteal">黄体期 / 经前</option>
+                    <option value="perimenopause">围绝经期</option>
+                    <option value="menopause">绝经后</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>关节关注</span>
+                  <select name="jointFocus">
+                    <option value="none">无特殊</option>
+                    <option value="knee">膝</option>
+                    <option value="heel">跟骨 / 足跟</option>
+                    <option value="hip">髋</option>
+                    <option value="spine">腰背 / 脊柱</option>
+                    <option value="multi">多部位</option>
+                  </select>
+                </label>
+                <label class="field">
                   <span>糖代谢</span>
                   <select name="glucoseStatus">
                     <option value="normal">无特殊</option>
@@ -151,6 +175,10 @@
                     <label class="toggle-chip"><input type="checkbox" name="anemiaRisk"><span>贫血风险</span></label>
                     <label class="toggle-chip"><input type="checkbox" name="hypertension"><span>血压</span></label>
                     <label class="toggle-chip"><input type="checkbox" name="dyslipidemia"><span>血脂</span></label>
+                    <label class="toggle-chip"><input type="checkbox" name="jointPain"><span>关节不适</span></label>
+                    <label class="toggle-chip"><input type="checkbox" name="lowSun"><span>日晒少</span></label>
+                    <label class="toggle-chip"><input type="checkbox" name="heavyFlow"><span>经量偏多</span></label>
+                    <label class="toggle-chip"><input type="checkbox" name="periodCramps"><span>痛经 / 经前不适</span></label>
                     <label class="toggle-chip"><input type="checkbox" name="smoker"><span>吸烟</span></label>
                   </div>
                 </div>
@@ -160,7 +188,7 @@
             <article class="card compact-card">
               <div class="section-head compact-head">
                 <h2>身体维度</h2>
-                <button type="button" class="ghost-btn tiny-btn" id="importBodyBtn">一键导入</button>
+                <div class="head-actions"><button type="button" class="ghost-btn tiny-btn" id="importBodyBtn">导入</button><button type="button" class="ghost-btn tiny-btn" id="quickExportBtn">导出</button></div>
               </div>
               <form id="bodyForm" class="form-grid measurements-grid">
                 <label class="field"><span>颈围</span><input name="neck" type="number" step="0.1"></label>
@@ -177,8 +205,8 @@
                 <label class="field"><span>脚踝</span><input name="ankle" type="number" step="0.1"></label>
               </form>
               <div class="action-row split-row">
-                <button type="button" class="primary-btn" id="saveBodyBtn">保存身体记录</button>
-                <button type="button" class="ghost-btn" id="photoShapeBtn">照片塑形</button>
+                <button type="button" class="primary-btn" id="saveBodyBtn">保存并更新模型</button>
+                <button type="button" class="ghost-btn" id="photoShapeBtn">照片捏形</button>
               </div>
             </article>
 
@@ -225,6 +253,34 @@
                 </label>
               </div>
               <div class="search-results" id="foodSearchResults"></div>
+            </article>
+
+            <article class="card compact-card custom-food-card">
+              <div class="section-head compact-head">
+                <h2>自定义常用食品</h2>
+                <span class="subtle-note">手动增改删 · 搜索优先</span>
+              </div>
+              <form id="customFoodForm" class="form-grid custom-food-grid">
+                <label class="field full-span"><span>中文 / 常用名 *</span><input id="customFoodName" type="text" autocomplete="off" placeholder="如：我的早餐燕麦碗"></label>
+                <label class="field"><span>英文名</span><input id="customFoodNameEn" type="text" autocomplete="off" placeholder="Optional EN"></label>
+                <label class="field"><span>条码 / 编号</span><input id="customFoodCode" type="text" inputmode="numeric" autocomplete="off" placeholder="可空"></label>
+                <label class="field"><span>品牌 / 来源</span><input id="customFoodBrand" type="text" autocomplete="off" placeholder="家庭 / 餐厅 / 品牌"></label>
+                <label class="field"><span>每份 g</span><input id="customFoodServing" type="number" min="1" step="1" placeholder="可空"></label>
+                <label class="field nutrient-field"><span>能量 kcal/100g</span><input id="customKcal" data-custom-nutrient="kcal" type="number" min="0" step="0.1"></label>
+                <label class="field nutrient-field"><span>蛋白 g/100g</span><input id="customProtein" data-custom-nutrient="protein" type="number" min="0" step="0.1"></label>
+                <label class="field nutrient-field"><span>碳水 g/100g</span><input id="customCarbs" data-custom-nutrient="carbs" type="number" min="0" step="0.1"></label>
+                <label class="field nutrient-field"><span>脂肪 g/100g</span><input id="customFat" data-custom-nutrient="fat" type="number" min="0" step="0.1"></label>
+                <label class="field nutrient-field"><span>纤维 g/100g</span><input id="customFiber" data-custom-nutrient="fiber" type="number" min="0" step="0.1"></label>
+                <label class="field nutrient-field"><span>钙 mg/100g</span><input id="customCalcium" data-custom-nutrient="calcium" type="number" min="0" step="0.1"></label>
+                <label class="field nutrient-field"><span>铁 mg/100g</span><input id="customIron" data-custom-nutrient="iron" type="number" min="0" step="0.1"></label>
+                <label class="field nutrient-field"><span>维 D µg/100g</span><input id="customVitaminD" data-custom-nutrient="vitaminD" type="number" min="0" step="0.1"></label>
+                <label class="field nutrient-field"><span>维 K µg/100g</span><input id="customVitaminK" data-custom-nutrient="vitaminK" type="number" min="0" step="0.1"></label>
+              </form>
+              <div class="action-row split-row">
+                <button type="button" class="primary-btn" id="saveCustomFoodBtn">保存为常用</button>
+                <button type="button" class="ghost-btn" id="clearCustomFoodFormBtn">清空</button>
+              </div>
+              <div class="custom-food-list" id="customFoodList"></div>
             </article>
 
             <article class="card compact-card">
@@ -287,7 +343,7 @@
     <dialog id="photoDialog" class="app-dialog">
       <form method="dialog" class="dialog-shell">
         <header class="dialog-head">
-          <h3>照片塑形</h3>
+          <h3>照片捏形</h3>
           <button type="submit" class="icon-btn" aria-label="关闭">×</button>
         </header>
         <div class="dialog-body">
@@ -300,7 +356,7 @@
           </div>
           <div class="photo-helper-row">
             <button type="button" class="ghost-btn tiny-btn" id="photoAutoBtn">轮廓估测</button>
-            <span class="subtle-note" id="photoShapeMeta">上传全身照后可先自动估测，再手动微调模型。</span>
+            <span class="subtle-note" id="photoShapeMeta">上传正面全身照后可先自动估测，再手动微调模型。</span>
           </div>
           <div class="slider-grid">
             <label class="field slider-field"><span>肩线</span><input id="shapeShoulder" type="range" min="80" max="125" value="100"></label>
@@ -331,7 +387,6 @@
               <span class="subtle-note" id="persistStatus">本地已保存</span>
             </div>
             <div class="backup-meta" id="localBackupMeta">最近本地备份：0 份</div>
-            <div class="dialog-note">完整导出包含身体、饮食、自定义食品、塑形参数与同步配置（不含 token）。</div>
             <div class="action-row split-row">
               <button type="button" class="ghost-btn" id="importAllBtn">导入全部</button>
               <button type="button" class="primary-btn" id="exportAllBtn">导出全部</button>
@@ -344,7 +399,6 @@
             </div>
             <div class="action-row split-row">
               <button type="button" class="ghost-btn" id="persistBtn">申请更稳保存</button>
-              <div class="inline-tip">本地优先，云端作为补充同步。</div>
             </div>
           </section>
 
@@ -353,7 +407,6 @@
               <h4>GitHub 云端</h4>
               <span class="subtle-note" id="githubStatus">未配置</span>
             </div>
-            <div class="dialog-note">默认已预填 <strong>kawhikun / haochijia</strong>，先本地保存，再按需开启同步。</div>
             <div class="form-grid dialog-grid">
               <label class="field"><span>Owner</span><input id="ghOwner" type="text" autocomplete="off" placeholder="你的 GitHub 用户名"></label>
               <label class="field"><span>Repo</span><input id="ghRepo" type="text" autocomplete="off" placeholder="仓库名"></label>
@@ -373,6 +426,6 @@
 
     <input id="importInput" type="file" accept=".json,.csv" hidden>
 
-    <script type="module" src="./assets/core.js?v=20260422a"></script>
+    <script type="module" src="./assets/core.js?v=20260426c"></script>
   </body>
 </html>

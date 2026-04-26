@@ -1,0 +1,48 @@
+{
+  "appVersion": "v36-comprehensive-nourishnest",
+  "auditedAt": "2026-04-26T05:07:41.706Z",
+  "totalRows": 109910,
+  "checks": [
+    {
+      "key": "cn",
+      "label": "中文库",
+      "file": "foods-cn.min.json",
+      "rows": 36793,
+      "missing": {
+        "zh": 0,
+        "en": 0,
+        "original": 0,
+        "code": 0,
+        "nutrients": 0
+      }
+    },
+    {
+      "key": "global_part01",
+      "label": "国际库 01",
+      "file": "foods-global.part01.min.json",
+      "rows": 59704,
+      "missing": {
+        "zh": 0,
+        "en": 0,
+        "original": 0,
+        "code": 15,
+        "nutrients": 0
+      }
+    },
+    {
+      "key": "global_part02",
+      "label": "国际库 02",
+      "file": "foods-global.part02.min.json",
+      "rows": 13413,
+      "missing": {
+        "zh": 0,
+        "en": 0,
+        "original": 0,
+        "code": 0,
+        "nutrients": 0
+      }
+    }
+  ],
+  "conclusion": "中文库与国际库的中文名、英文名、原始名字段均为 0 缺失；仅国际库 part01 有 15 条缺少条码。",
+  "updatedFor": "Haochijia v36 NourishNest comprehensive build"
+}

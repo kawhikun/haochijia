@@ -1,5 +1,13 @@
 let remoteModulesPromise = null;
 
+function importWithTimeout(url, ms = 5200) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = window.setTimeout(() => reject(new Error(`Module timeout: ${url}`)), ms);
+  });
+  return Promise.race([import(url), timeout]).finally(() => window.clearTimeout(timer));
+}
+
 function perfProfile() {
   const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
   const ua = navigator.userAgent || '';
@@ -17,8 +25,8 @@ function perfProfile() {
 
 async function importThreeProvider(threeUrl, controlsUrl) {
   const [THREE, controls] = await Promise.all([
-    import(threeUrl),
-    import(controlsUrl),
+    importWithTimeout(threeUrl),
+    importWithTimeout(controlsUrl),
   ]);
   return { THREE, OrbitControls: controls.OrbitControls };
 }
@@ -26,6 +34,10 @@ async function importThreeProvider(threeUrl, controlsUrl) {
 function loadRemoteModules() {
   if (!remoteModulesPromise) {
     const providers = [
+      {
+        three: './vendor/three.module.js',
+        controls: './vendor/OrbitControls.js',
+      },
       {
         three: 'https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js',
         controls: 'https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/controls/OrbitControls.js',
@@ -166,8 +178,8 @@ function heatPropsForDelta(delta) {
     };
   }
   return {
-    color: 0xf7fbff,
-    emissive: 0x8eabff,
+    color: 0xfffbf3,
+    emissive: 0xc9b7ff,
     emissiveIntensity: 0.05,
     opacity: 0.98,
   };
@@ -232,7 +244,7 @@ function buildBodyMeshDims(recordInput) {
 
   const height = clampNum(((shaped.heightCm || 165) / 165) * 2.18, 1.92, 2.42);
   const bodyFatAdj = clampNum(((shaped.bodyFat || 22) - 18) * 0.0018, -0.03, 0.05);
-  const headRadius = height * 0.095;
+  const headRadius = height * 0.112;
   const bottom = -height * 0.5 + 0.02;
   const yAt = (p) => bottom + height * p;
   const ellipse = (cm, xFactor = 0.00315, zFactor = 0.00248) => ({ x: clampNum((cm || 80) * xFactor, 0.09, 0.42), z: clampNum((cm || 80) * zFactor, 0.08, 0.34) });
@@ -325,7 +337,7 @@ function buildBodyMeshDims(recordInput) {
   return {
     height,
     headRadius,
-    headCenterY: yAt(0.92),
+    headCenterY: yAt(0.925),
     neck,
     neckHeight: height * 0.046,
     neckCenterY: yAt(0.842),
@@ -424,9 +436,9 @@ function createBodyMaterial(THREE, ghost, delta) {
       color: heat.color,
       emissive: heat.emissive,
       emissiveIntensity: intensity,
-      roughness: perf.reduced ? 0.46 : 0.36,
+      roughness: perf.reduced ? 0.42 : 0.32,
       metalness: 0.02,
-      clearcoat: perf.reduced ? 0.26 : 0.46,
+      clearcoat: perf.reduced ? 0.34 : 0.58,
       clearcoatRoughness: perf.reduced ? 0.34 : 0.22,
       sheen: perf.reduced ? 0.28 : 0.46,
       sheenColor: heat.color,
@@ -583,12 +595,42 @@ function buildWebglBodyGroup(THREE, recordInput, previousInput, ghost = false) {
   neck.castShadow = !ghost;
   group.add(neck);
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(dims.headRadius, 32, 28), headMat.material);
-  head.scale.set(1, 1.14, 1.02);
-  head.position.set(0, dims.headCenterY, 0.01);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(dims.headRadius, 40, 32), headMat.material);
+  head.scale.set(1, 1.16, 1.03);
+  head.position.set(0, dims.headCenterY, 0.012);
   head.castShadow = !ghost;
   group.add(head);
   collectHeatMat(group, headMat);
+
+  const faceMaterial = new THREE.MeshPhysicalMaterial({
+    color: ghost ? 0xd7e1f8 : 0xfffbf4,
+    emissive: ghost ? 0x8ea7d8 : 0xdcd0ff,
+    emissiveIntensity: ghost ? 0.02 : 0.055,
+    roughness: 0.38,
+    metalness: 0.0,
+    clearcoat: ghost ? 0.12 : 0.42,
+    clearcoatRoughness: 0.26,
+    transparent: true,
+    opacity: ghost ? 0.12 : 0.64,
+    side: THREE.DoubleSide,
+  });
+  const facePlate = new THREE.Mesh(new THREE.SphereGeometry(dims.headRadius * 0.74, 32, 18), faceMaterial);
+  facePlate.scale.set(0.72, 0.92, 0.18);
+  facePlate.position.set(0, dims.headCenterY - dims.headRadius * 0.02, dims.headRadius * 0.93);
+  facePlate.rotation.x = -0.05;
+  facePlate.castShadow = false;
+  group.add(facePlate);
+
+  const crownMaterial = new THREE.MeshBasicMaterial({
+    color: ghost ? 0xb8c6e6 : 0xffffff,
+    transparent: true,
+    opacity: ghost ? 0.08 : 0.28,
+  });
+  const crown = new THREE.Mesh(new THREE.TorusGeometry(dims.headRadius * 1.05, dims.headRadius * 0.012, 8, 72), crownMaterial);
+  crown.position.set(0, dims.headCenterY + dims.headRadius * 0.035, dims.headRadius * 0.02);
+  crown.rotation.x = Math.PI / 2;
+  crown.scale.set(0.82, 1.0, 1.0);
+  group.add(crown);
 
   addLimbSet(THREE, group, dims, ghost, 'L', armLMat, foreLMat, thighLMat, calfLMat);
   addLimbSet(THREE, group, dims, ghost, 'R', armRMat, foreRMat, thighRMat, calfRMat);
@@ -609,13 +651,13 @@ function createWebGLBodyScene(canvas, THREE, OrbitControls, options) {
   }
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = perf.reduced ? 1.08 : 1.18;
+  renderer.toneMappingExposure = perf.reduced ? 1.12 : 1.22;
   renderer.shadowMap.enabled = perf.shadows;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.setClearAlpha(0);
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(isIOS ? 0x151a2f : isAndroid ? 0x132132 : 0x101626, 5.1, isAndroid ? 12.6 : 11.8);
+  scene.fog = new THREE.Fog(isIOS ? 0xf8f1e8 : isAndroid ? 0xf2f7ed : 0xf7f3ea, 5.8, isAndroid ? 13.2 : 12.4);
 
   const camera = new THREE.PerspectiveCamera(isIOS ? 24.8 : isAndroid ? 25.2 : 25.5, 1, 0.1, 30);
   const controls = new OrbitControls(camera, canvas);
@@ -633,9 +675,9 @@ function createWebGLBodyScene(canvas, THREE, OrbitControls, options) {
   controls.autoRotateSpeed = isIOS ? 0.44 : isAndroid ? 0.54 : 0.48;
 
   const white = new THREE.Color(0xffffff);
-  const deepSlate = new THREE.Color(0x101626);
+  const deepSlate = new THREE.Color(0xf7f3ea);
 
-  const hemi = new THREE.HemisphereLight(isIOS ? 0xf4e6f1 : isAndroid ? 0xeaf7f0 : 0xf7f1ec, isIOS ? 0x1a2440 : 0x182436, perf.reduced ? 1.34 : (isIOS ? 1.62 : isAndroid ? 1.58 : 1.54));
+  const hemi = new THREE.HemisphereLight(isIOS ? 0xfff8ff : isAndroid ? 0xf8fff8 : 0xfffbf4, isIOS ? 0xd6c4ec : isAndroid ? 0xcfe5d5 : 0xd9cced, perf.reduced ? 1.46 : (isIOS ? 1.76 : isAndroid ? 1.7 : 1.72));
   scene.add(hemi);
   const key = new THREE.DirectionalLight(isIOS ? 0xfff5fe : isAndroid ? 0xf6fff8 : 0xfffbf6, perf.reduced ? 1.78 : (isIOS ? 2.18 : isAndroid ? 2.08 : 2.12));
   key.position.set(isAndroid ? 4.2 : 3.9, 5.1, isIOS ? 4.1 : 3.9);
@@ -733,7 +775,7 @@ function createWebGLBodyScene(canvas, THREE, OrbitControls, options) {
     arcRing.material.color.copy(accentColor.clone().lerp(new THREE.Color(0xeedaca), 0.18));
     backAura.material.color.copy(brightAccent.clone().lerp(white, 0.18));
     focusHalo.material.color.copy(brightAccent);
-    if (floor.material.color) floor.material.color.copy(softAccent.clone().lerp(new THREE.Color(0x2d3548), 0.36));
+    if (floor.material.color) floor.material.color.copy(softAccent.clone().lerp(new THREE.Color(0xd9d0c2), 0.3));
     scene.fog.color.copy(deepSlate.clone().lerp(accentColor, 0.08));
   }
 
@@ -748,9 +790,9 @@ function createWebGLBodyScene(canvas, THREE, OrbitControls, options) {
   }
 
   function alignCamera(angle = 0) {
-    const radius = perf.reduced ? (isIOS ? 3.94 : 4.02) : (isIOS ? 4.06 : isAndroid ? 4.26 : 4.2);
-    const cameraY = isIOS ? 1.4 : isAndroid ? 1.3 : 1.34;
-    const targetY = isIOS ? 0.2 : isAndroid ? 0.14 : 0.16;
+    const radius = perf.reduced ? (isIOS ? 3.74 : 3.82) : (isIOS ? 3.88 : isAndroid ? 4.02 : 3.96);
+    const cameraY = isIOS ? 1.46 : isAndroid ? 1.38 : 1.42;
+    const targetY = isIOS ? 0.24 : isAndroid ? 0.19 : 0.21;
     const rad = (angle || 0) * Math.PI / 180;
     camera.position.set(Math.sin(rad) * radius, cameraY, Math.cos(rad) * radius);
     controls.target.set(0, targetY, 0);
@@ -902,7 +944,7 @@ function fallbackFigureProfile(record, width, height) {
     centerX: width * 0.5,
     topY: height * 0.06,
     bodyHeight: height * 0.84,
-    headR: clampNum((body.neck || 34) * 0.38, 12, 28),
+    headR: clampNum((body.neck || 34) * 0.48, 15, 34),
     shoulderHalf: clampNum((body.shoulder || 42) * 1.1 * bodySoftMix(1, body.shapeShoulder || 1, 0.82), 28, 80),
     chestHalf: clampNum((body.chest || 90) * 0.54 * chestScale, 26, 68),
     waistHalf: clampNum((body.waist || 75) * 0.46 * waistScale, 22, 58),
@@ -912,7 +954,7 @@ function fallbackFigureProfile(record, width, height) {
   };
 }
 
-function drawFallbackFigure(ctx, canvas, snapshot, focusField, accentColor = '#6c8fa9') {
+function drawFallbackFigure(ctx, canvas, snapshot, focusField, accentColor = '#6c8fa9', view = {}) {
   const dpr = Math.max(window.devicePixelRatio || 1, 1);
   const width = canvas.clientWidth || canvas.width;
   const height = canvas.clientHeight || canvas.height;
@@ -924,13 +966,21 @@ function drawFallbackFigure(ctx, canvas, snapshot, focusField, accentColor = '#6
   ctx.clearRect(0, 0, width, height);
   const accent = normalizeHexColor(accentColor, '#6c8fa9');
   const bg = ctx.createLinearGradient(0, 0, 0, height);
-  bg.addColorStop(0, 'rgba(27, 20, 38, 0.96)');
-  bg.addColorStop(0.52, 'rgba(23, 33, 48, 0.92)');
-  bg.addColorStop(1, 'rgba(11, 19, 31, 0.9)');
+  bg.addColorStop(0, 'rgba(255, 251, 244, 0.98)');
+  bg.addColorStop(0.52, 'rgba(248, 242, 232, 0.94)');
+  bg.addColorStop(1, 'rgba(239, 233, 222, 0.92)');
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, width, height);
   if (!snapshot?.current) return;
   const p = fallbackFigureProfile(snapshot.current, width, height);
+  const yaw = Number(view.rotation || 0);
+  const zoom = clampNum(Number(view.zoom || 1), 0.78, 1.38);
+  const depth = 0.82 + Math.abs(Math.cos(yaw)) * 0.18;
+  const lean = Math.sin(yaw) * Math.min(34, width * 0.08);
+  p.bodyHeight *= zoom;
+  p.topY = height * 0.06 + (1 - zoom) * height * 0.2;
+  ['shoulderHalf', 'chestHalf', 'waistHalf', 'hipHalf', 'thighHalf', 'calfHalf'].forEach((key) => { p[key] *= depth * zoom; });
+  p.headR *= zoom;
 
   const stageGlow = ctx.createRadialGradient(p.centerX, height * 0.86, 16, p.centerX, height * 0.86, width * 0.32);
   stageGlow.addColorStop(0, hexToRgba(accent, 0.22));
@@ -947,9 +997,9 @@ function drawFallbackFigure(ctx, canvas, snapshot, focusField, accentColor = '#6
   ctx.fillRect(0, 0, width, height);
 
   const fill = ctx.createLinearGradient(p.centerX - 90, p.topY, p.centerX + 90, p.topY + p.bodyHeight);
-  fill.addColorStop(0, 'rgba(238, 218, 202, 0.94)');
-  fill.addColorStop(0.45, 'rgba(250, 252, 255, 0.98)');
-  fill.addColorStop(1, 'rgba(153, 196, 207, 0.9)');
+  fill.addColorStop(0, 'rgba(250, 232, 216, 0.96)');
+  fill.addColorStop(0.45, 'rgba(255, 253, 248, 0.98)');
+  fill.addColorStop(1, 'rgba(184, 200, 226, 0.92)');
 
   const y0 = p.topY + p.headR * 2.2;
   const y1 = y0 + p.bodyHeight * 0.08;
@@ -968,6 +1018,9 @@ function drawFallbackFigure(ctx, canvas, snapshot, focusField, accentColor = '#6
     [p.centerX - p.calfHalf, y6],
   ];
   const right = left.map(([x, y]) => [p.centerX + (p.centerX - x), y]).reverse();
+
+  ctx.save();
+  ctx.translate(lean, 0);
 
   ctx.beginPath();
   ctx.ellipse(p.centerX, p.topY + p.headR + 6, p.headR, p.headR * 1.14, 0, 0, Math.PI * 2);
@@ -994,6 +1047,15 @@ function drawFallbackFigure(ctx, canvas, snapshot, focusField, accentColor = '#6
   ctx.lineWidth = 1.2;
   ctx.stroke();
 
+  const sideGlow = ctx.createLinearGradient(p.centerX - p.shoulderHalf, y1, p.centerX + p.shoulderHalf, y4);
+  sideGlow.addColorStop(0, hexToRgba(accent, 0.08));
+  sideGlow.addColorStop(0.5, 'rgba(255,255,255,0.28)');
+  sideGlow.addColorStop(1, hexToRgba(accent, 0.16));
+  ctx.fillStyle = sideGlow;
+  ctx.globalCompositeOperation = 'soft-light';
+  ctx.fillRect(p.centerX - p.shoulderHalf * 1.1, y0, p.shoulderHalf * 2.2, y6 - y0);
+  ctx.globalCompositeOperation = 'source-over';
+
   const focusMap = {
     chest: y2,
     waist: y3,
@@ -1017,13 +1079,15 @@ function drawFallbackFigure(ctx, canvas, snapshot, focusField, accentColor = '#6
     ctx.fillStyle = grad;
     ctx.fillRect(p.centerX - p.hipHalf * 1.2, focusY - 18, p.hipHalf * 2.4, 36);
   }
+  ctx.restore();
 }
 
 export function createBodyModelController(canvas, options = {}) {
   const ctx = canvas.getContext('2d');
+  const fallbackView = { rotation: 0, zoom: 1, dragging: false, lastX: 0, lastY: 0 };
   const redrawFallback = () => {
     if (!ctx) return;
-    drawFallbackFigure(ctx, canvas, options.snapshot, options.focusField || '', options.accentColor || '#6c8fa9');
+    drawFallbackFigure(ctx, canvas, options.snapshot, options.focusField || '', options.accentColor || '#6c8fa9', fallbackView);
   };
   const fallback = {
     mode: 'fallback',
@@ -1040,10 +1104,45 @@ export function createBodyModelController(canvas, options = {}) {
       redrawFallback();
     },
     resetView() {
+      fallbackView.rotation = 0;
+      fallbackView.zoom = 1;
+      redrawFallback();
       options.onViewReset?.();
     },
     dispose() {},
   };
+
+  const onFallbackPointerDown = (event) => {
+    fallbackView.dragging = true;
+    fallbackView.lastX = event.clientX || 0;
+    fallbackView.lastY = event.clientY || 0;
+    canvas.setPointerCapture?.(event.pointerId);
+  };
+  const onFallbackPointerMove = (event) => {
+    if (!fallbackView.dragging || proxy.impl !== fallback) return;
+    const x = event.clientX || 0;
+    const y = event.clientY || 0;
+    fallbackView.rotation += (x - fallbackView.lastX) * 0.018;
+    fallbackView.zoom = clampNum(fallbackView.zoom + (fallbackView.lastY - y) * 0.0012, 0.78, 1.38);
+    fallbackView.lastX = x;
+    fallbackView.lastY = y;
+    redrawFallback();
+  };
+  const onFallbackPointerEnd = (event) => {
+    fallbackView.dragging = false;
+    canvas.releasePointerCapture?.(event.pointerId);
+  };
+  const onFallbackWheel = (event) => {
+    if (proxy.impl !== fallback) return;
+    fallbackView.zoom = clampNum(fallbackView.zoom + (event.deltaY < 0 ? 0.05 : -0.05), 0.78, 1.38);
+    redrawFallback();
+  };
+  canvas.addEventListener('pointerdown', onFallbackPointerDown, { passive: true });
+  canvas.addEventListener('pointermove', onFallbackPointerMove, { passive: true });
+  canvas.addEventListener('pointerup', onFallbackPointerEnd, { passive: true });
+  canvas.addEventListener('pointercancel', onFallbackPointerEnd, { passive: true });
+  canvas.addEventListener('wheel', onFallbackWheel, { passive: true });
+  canvas.addEventListener('dblclick', () => fallback.resetView(), { passive: true });
 
   const proxy = {
     mode: 'loading',
@@ -1064,6 +1163,11 @@ export function createBodyModelController(canvas, options = {}) {
       proxy.impl.resetView();
     },
     dispose() {
+      canvas.removeEventListener('pointerdown', onFallbackPointerDown);
+      canvas.removeEventListener('pointermove', onFallbackPointerMove);
+      canvas.removeEventListener('pointerup', onFallbackPointerEnd);
+      canvas.removeEventListener('pointercancel', onFallbackPointerEnd);
+      canvas.removeEventListener('wheel', onFallbackWheel);
       proxy.impl.dispose();
     },
     ready: loadRemoteModules().then(({ THREE, OrbitControls }) => {
