@@ -2871,3 +2871,12 @@ textarea {
     flex-direction: column;
   }
 }
+
+
+/* v40: remove model overlay metrics that blocked nutrition rings */
+.hero-telemetry,
+.telemetry-chip {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}

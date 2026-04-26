@@ -12,9 +12,9 @@ import {
   clamp,
   NUTRIENT_DEFS,
   OCR_FIELD_MAP,
-} from './nutrition-refs.js?v=20260426g';
-import { buildSmartFoodLabels } from './food-label-upgrade.js?v=20260426g';
-import { createBodyModelController } from './model-scene.js?v=20260426g';
+} from './nutrition-refs.js?v=20260426h';
+import { buildSmartFoodLabels } from './food-label-upgrade.js?v=20260426h';
+import { createBodyModelController } from './model-scene.js?v=20260426h';
 
 const STORAGE_KEY = 'haochijia.core.v39.snapshot';
 const DB_NAME = 'haochijia-core-v39';
@@ -150,7 +150,7 @@ const DEFAULT_GITHUB = {
 
 const DOM = {};
 const state = {
-  version: 'v39',
+  version: 'v40',
   platform: detectPlatform(),
   profile: { ...defaultProfile(), bodyFat: 22, focusNote: '' },
   bodyHistory: [],
@@ -185,7 +185,7 @@ const state = {
   githubSyncTimer: null,
 };
 
-const V32_BUILD_VERSION = 'v39-standard-body-daily-history';
+const V32_BUILD_VERSION = 'v40-embedded-standard-body-no-telemetry';
 const V32_STORAGE_KEYS = [STORAGE_KEY, 'haochijia.core.v38.snapshot', 'haochijia.core.v37.snapshot', 'haochijia.core.v36.snapshot', 'haochijia.core.v34.snapshot', 'haochijia.core.v33.snapshot', 'haochijia.core.v32.snapshot', 'haochijia.core.v31.snapshot'];
 const V32_IDB_SNAPSHOT_KEYS = ['snapshot-v39', 'snapshot-v38', 'snapshot-v37', 'snapshot-v36', 'snapshot-v34', 'snapshot-v33', 'snapshot-v32', 'snapshot'];
 const V32_IDB_BACKUP_KEY = 'snapshot-history-v39';
@@ -193,8 +193,8 @@ const LOCAL_BACKUP_LIMIT = 18;
 const FOOD_REGION_OPTIONS = new Set(['all', 'cn', 'intl']);
 const FOOD_NAME_MODE_OPTIONS = new Set(['zh', 'en', 'original']);
 const V32_FOOD_BANK_FILES = Object.freeze({
-  cn: ['./data/foods-cn.min.json?v=20260426g'],
-  intl: ['./data/foods-global.part01.min.json?v=20260426g', './data/foods-global.part02.min.json?v=20260426g'],
+  cn: ['./data/foods-cn.min.json?v=20260426h'],
+  intl: ['./data/foods-global.part01.min.json?v=20260426h', './data/foods-global.part02.min.json?v=20260426h'],
 });
 const FOOD_LIBRARY_AUDIT = Object.freeze({
   cn: { label: '中文库', file: 'foods-cn.min.json', rows: 36793, missingZh: 0, missingEn: 0, missingOriginal: 0, missingCode: 0 },
@@ -287,8 +287,8 @@ async function init() {
         window.setTimeout(() => renderHeroMeta(), 900);
       },
       onModelAssetReady: () => {
-        if (DOM.bodyStatusHint) DOM.bodyStatusHint.textContent = '已接入上传的标准人体模型；胸腰臀、四肢和体型输入会实时塑形';
-        if (DOM.focusModePill) DOM.focusModePill.textContent = '标准人体模型 · 6 环联动';
+        if (DOM.bodyStatusHint) DOM.bodyStatusHint.textContent = '已接入内嵌标准人体网格；胸腰臀、四肢和体型输入会实时塑形';
+        if (DOM.focusModePill) DOM.focusModePill.textContent = '标准人体模型 · 营养环联动';
       },
     });
     state.model.ready
@@ -321,8 +321,7 @@ async function init() {
 }
 
 function bindDom() {
-  const ids = [
-    'appShell', 'platformBadge', 'menuBtn', 'heroStage', 'bodyCanvas', 'stagePhotoRef', 'heroTelemetry', 'focusModePill', 'focusModeText', 'ringOrbit',
+  const ids = [    'appShell', 'platformBadge', 'menuBtn', 'heroStage', 'bodyCanvas', 'stagePhotoRef', 'focusModePill', 'focusModeText', 'ringOrbit',
     'profileCard', 'profileCardBody', 'toggleProfileCardBtn', 'measureCard', 'measureCardBody', 'toggleBodyCardBtn',
     'profileForm', 'bodyForm', 'bodyStatusHint', 'importBodyBtn', 'quickExportBtn', 'saveBodyBtn', 'photoShapeBtn', 'suggestionSummary', 'suggestionCards', 'featureAuditList',
     'bodyHistoryList', 'bodyHistoryMeta', 'foodSearchStatus', 'foodAuditStrip', 'foodSearchInput', 'foodAmountInput', 'foodSearchResults', 'customFoodForm', 'customFoodName', 'customFoodNameEn', 'customFoodCode', 'customFoodBrand', 'customFoodServing', 'saveCustomFoodBtn', 'clearCustomFoodFormBtn', 'customFoodList', 'captureInput',
@@ -727,7 +726,6 @@ function renderAll() {
   recomputeState();
   renderHeroMeta();
   renderHeroRings();
-  renderHeroTelemetry();
   renderSuggestions();
   renderFeatureAudit();
   renderBodyHistory();
@@ -918,29 +916,16 @@ function scheduleSoftRefresh() {
 
 function renderHeroMeta() {
   const platformText = state.platform.key === 'ios' ? 'iPhone 标准模型' : state.platform.key === 'android' ? 'Android 标准模型' : '标准人体模型';
-  DOM.focusModePill.textContent = `${platformText} · 6 环联动`;
-  DOM.focusModeText.textContent = `${nutrientDisplayName(state.activeRing)} 高亮 · 身体维度实时塑形 · 拖旋 / 缩放 / 双击回正`;
+  DOM.focusModePill.textContent = `${platformText} · 营养环联动`;
+  DOM.focusModeText.textContent = `${nutrientDisplayName(state.activeRing)} 高亮 · 标准人体网格实时塑形 · 拖旋 / 缩放 / 双击回正`;
 }
 
 function renderHeroTelemetry() {
-  if (!DOM.heroTelemetry || !state.calc?.targets) return;
-  const current = buildModelRecord();
-  const heightM = Number(current.heightCm || 0) / 100;
-  const bmi = heightM > 0 && Number.isFinite(current.weightKg) ? current.weightKg / (heightM * heightM) : null;
-  const kcalTarget = targetValue(state.calc.targets.kcal);
-  const proteinTarget = targetValue(state.calc.targets.protein);
-  const waistHip = Number.isFinite(current.waist) && Number.isFinite(current.hip) && current.hip > 0 ? current.waist / current.hip : null;
-  const proteinNow = Number(state.totals.protein || 0);
-  const waterNow = Number(state.totals.water || 0);
-  const chips = [
-    { label: '体重', value: Number.isFinite(current.weightKg) ? formatNumber(current.weightKg, 'kg', 1) : '待填' },
-    { label: 'BMI', value: bmi ? formatNumber(bmi, '', 1) : '待填' },
-    { label: '腰臀比', value: waistHip ? formatNumber(waistHip, '', 2) : '待填' },
-    { label: '目标热量', value: kcalTarget ? formatCompactNutrient('kcal', kcalTarget) : '待算' },
-    { label: '蛋白', value: formatCompactNutrient('protein', proteinNow) + ' / ' + formatCompactNutrient('protein', proteinTarget) },
-    { label: '水分', value: formatCompactNutrient('water', waterNow) },
-  ];
-  DOM.heroTelemetry.innerHTML = chips.map((item) => '<span class="telemetry-chip"><b>' + escapeHtml(item.label) + '</b><em>' + escapeHtml(item.value) + '</em></span>').join('');
+  // v40: 模型界面不再显示体重、BMI、腰臀比、目标热量、蛋白、水分这 6 个指标浮层，避免遮挡营养环。
+  if (DOM.heroTelemetry) {
+    DOM.heroTelemetry.innerHTML = '';
+    DOM.heroTelemetry.hidden = true;
+  }
 }
 
 function buildHeroRingData() {

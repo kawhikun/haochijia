@@ -1,7 +1,7 @@
 {
-  "name": "Haochijia v39 Standard Body Model",
+  "name": "Haochijia v40 Embedded Body Model",
   "short_name": "Haochijia",
-  "description": "V39 build focused on an uploaded standard 3D body model, live body-dimension morphing, collapsible profile panels, natural-day records, historical intake reference, and full data export.",
+  "description": "v40 build focused on an uploaded standard 3D body model, live body-dimension morphing, collapsible profile panels, natural-day records, historical intake reference, and full data export.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
